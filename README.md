@@ -42,6 +42,12 @@ The container starts with:
 alembic upgrade head && python main.py
 ```
 
+Optional seed for starter templates:
+
+```bash
+docker compose run --rm bot python -m scripts.seed_templates
+```
+
 ## MVP workflow
 
 1. Open the admin bot and press `/start`.
@@ -106,6 +112,7 @@ Use `-` instead of URL if there is no link:
 
 ```text
 /leads
+/add_lead <tg_user_id_or_0> <username_or_dash> <geo> <intent> <notes>
 /lead_status <lead_id> <new|contacted|converted|dead>
 /deal <lead_id> <amount>
 ```
@@ -136,6 +143,7 @@ bot/
 core/
 db/
 services/
+scripts/
 main.py
 Dockerfile
 compose.yaml
