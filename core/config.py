@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Any
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -26,6 +27,13 @@ class Settings(BaseSettings):
     tg_session_name: str = Field("concierge_session", alias="TG_SESSION_NAME")
     anthropic_api_key: str | None = Field(None, alias="ANTHROPIC_API_KEY")
     anthropic_model: str = Field("claude-3-5-haiku-20241022", alias="ANTHROPIC_MODEL")
+
+    @field_validator("tg_api_id", "tg_api_hash", "tg_phone", "anthropic_api_key", mode="before")
+    @classmethod
+    def empty_optional_to_none(cls, value: Any) -> Any:
+        if isinstance(value, str) and value.strip() == "":
+            return None
+        return value
 
     @field_validator("admin_ids_raw")
     @classmethod
