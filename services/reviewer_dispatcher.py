@@ -13,6 +13,11 @@ from db import queries
 log = get_logger(__name__)
 
 
+def trim(value: str | None, limit: int) -> str:
+    text = value or ""
+    return text if len(text) <= limit else text[: limit - 1] + "..."
+
+
 class ReviewerDispatcher:
     """Sends approved drafts to configured human reviewers."""
 
@@ -54,13 +59,12 @@ class ReviewerDispatcher:
         source_text: str | None,
         draft_text: str,
     ) -> str:
-        source = source_text or ""
-        if len(source) > 900:
-            source = source[:897] + "..."
+        source = trim(source_text, 900)
+        draft = trim(draft_text, 1800)
         return (
             f"Review draft #{draft_id} for item #{post_id}\n"
             f"Channel: {escape(channel)}\n"
             f"URL: {escape(url or '-')}\n\n"
             f"Source:\n{escape(source)}\n\n"
-            f"Draft to check and send manually:\n<code>{escape(draft_text)}</code>"
+            f"Draft to check and send manually:\n<code>{escape(draft)}</code>"
         )
