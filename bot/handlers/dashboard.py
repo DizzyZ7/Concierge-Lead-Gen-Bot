@@ -3,11 +3,12 @@ from __future__ import annotations
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
-from sqlalchemy import text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.keyboards.inline import main_menu
 from db import queries
+from db.models import ParsedPost
 
 router = Router(name=__name__)
 
@@ -18,6 +19,7 @@ Main:
 /help
 /health
 /stats
+/queue_stats
 /settings
 /pause
 /resume
@@ -63,6 +65,19 @@ async def render_dashboard(session_factory: async_sessionmaker[AsyncSession]) ->
     )
 
 
+async def render_queue_stats(session_factory: async_sessionmaker[AsyncSession]) -> str:
+    statuses = ["pending", "approved", "sent_to_reviewer", "reviewer_done", "skipped"]
+    async with session_factory() as session:
+        rows = await session.execute(
+            select(ParsedPost.status, func.count(ParsedPost.id)).group_by(ParsedPost.status)
+        )
+    counts = {status: count for status, count in rows.all()}
+    lines = ["Queue stats"]
+    for status in statuses:
+        lines.append(f"{status}: {counts.get(status, 0)}")
+    return "\n".join(lines)
+
+
 @router.message(Command("start"))
 async def start_command(message: Message) -> None:
     await message.answer("Concierge reviewer bot is ready.", reply_markup=main_menu())
@@ -87,6 +102,11 @@ async def health_command(message: Message, session_factory: async_sessionmaker[A
 @router.message(Command("stats"))
 async def stats_command(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
     await message.answer(await render_dashboard(session_factory), reply_markup=main_menu())
+
+
+@router.message(Command("queue_stats"))
+async def queue_stats_command(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    await message.answer(await render_queue_stats(session_factory))
 
 
 @router.callback_query(F.data == "nav:dashboard")
