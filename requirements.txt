@@ -1,6 +1,4 @@
 aiogram==3.7.0
-telethon==1.36.0
-anthropic==0.28.0
 sqlalchemy[asyncio]==2.0.30
 asyncpg==0.29.0
 alembic==1.13.1
