@@ -5,7 +5,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Sequence
 
-from sqlalchemy import and_, func, select, update
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -93,6 +93,17 @@ async def set_channel_limit(session: AsyncSession, channel_id: int, limit: int) 
     return channel
 
 
+async def set_channel_delay(session: AsyncSession, channel_id: int, delay_min: int, delay_max: int) -> TargetChannel | None:
+    channel = await session.get(TargetChannel, channel_id)
+    if not channel:
+        return None
+    channel.review_delay_min = delay_min
+    channel.review_delay_max = delay_max
+    await session.commit()
+    await session.refresh(channel)
+    return channel
+
+
 async def post_exists(session: AsyncSession, channel_id: int, tg_message_id: int) -> bool:
     row = await session.scalar(
         select(ParsedPost.id).where(ParsedPost.channel_id == channel_id, ParsedPost.tg_message_id == tg_message_id)
@@ -168,6 +179,17 @@ async def approve_post(
         session.add(ReviewDraft(post_id=post.id, draft_text=draft_text, draft_source=source, due_at=due_at))
     await session.commit()
     return await get_post_with_details(session, post_id)
+
+
+async def dispatch_now(session: AsyncSession, post_id: int) -> bool:
+    post = await get_post_with_details(session, post_id)
+    if not post or not post.draft or post.status not in {"approved", "sent_to_reviewer"}:
+        return False
+    if post.status == "sent_to_reviewer":
+        return True
+    post.draft.due_at = datetime.now(timezone.utc)
+    await session.commit()
+    return True
 
 
 async def skip_post(session: AsyncSession, post_id: int) -> bool:
