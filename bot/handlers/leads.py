@@ -44,6 +44,30 @@ async def leads_callback(callback: CallbackQuery, session_factory: async_session
     await send_leads(callback.message, session_factory)
 
 
+@router.message(Command("add_lead"))
+async def add_lead_command(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    if not message.text:
+        return
+    parts = message.text.split(maxsplit=5)
+    if len(parts) < 6:
+        await message.answer("Usage: /add_lead <tg_user_id_or_0> <username_or_dash> <geo> <intent> <notes>")
+        return
+    user_id = None if parts[1] == "0" else int(parts[1]) if parts[1].isdigit() else None
+    username = None if parts[2] == "-" else parts[2].lstrip("@")
+    async with session_factory() as session:
+        lead = await queries.create_lead(
+            session,
+            tg_user_id=user_id,
+            tg_username=username,
+            first_name=None,
+            source_post_id=None,
+            geo=parts[3],
+            intent=parts[4],
+            notes=parts[5],
+        )
+    await message.answer(f"Added lead #{lead.id}.")
+
+
 @router.message(Command("lead_status"))
 async def lead_status_command(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
     if not message.text:
