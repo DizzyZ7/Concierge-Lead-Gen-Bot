@@ -27,7 +27,8 @@ async def send_channels(message: Message, session_factory: async_sessionmaker[As
             f"Geo: {escape(channel.geo)}\n"
             f"Category: {escape(channel.category or '-') }\n"
             f"Active: {channel.is_active}\n"
-            f"Daily draft limit: {channel.daily_draft_limit}"
+            f"Daily draft limit: {channel.daily_draft_limit}\n"
+            f"Reviewer delay: {channel.review_delay_min}-{channel.review_delay_max} min"
         )
         await message.answer(text, reply_markup=channel_actions(channel.id))
 
@@ -74,6 +75,25 @@ async def set_channel_limit_command(message: Message, session_factory: async_ses
         return
     async with session_factory() as session:
         channel = await queries.set_channel_limit(session, int(parts[1]), int(parts[2]))
+    await message.answer("Updated." if channel else "Channel not found.")
+
+
+@router.message(Command("set_channel_delay"))
+async def set_channel_delay_command(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    if not message.text:
+        return
+    parts = message.text.split(maxsplit=3)
+    if len(parts) != 4 or not all(part.isdigit() for part in parts[1:]):
+        await message.answer("Usage: /set_channel_delay <channel_id> <min> <max>")
+        return
+    channel_id = int(parts[1])
+    delay_min = int(parts[2])
+    delay_max = int(parts[3])
+    if delay_min > delay_max:
+        await message.answer("Min delay must be less than or equal to max delay.")
+        return
+    async with session_factory() as session:
+        channel = await queries.set_channel_delay(session, channel_id, delay_min, delay_max)
     await message.answer("Updated." if channel else "Channel not found.")
 
 
