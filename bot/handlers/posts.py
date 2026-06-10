@@ -6,6 +6,7 @@ from html import escape
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.keyboards.inline import pending_actions, reviewer_actions
@@ -64,16 +65,25 @@ async def add_item_command(message: Message, session_factory: async_sessionmaker
     text = parts[3]
     tg_message_id = int(datetime.now(timezone.utc).timestamp() * 1000)
     async with session_factory() as session:
-        post = await queries.create_post(
-            session,
-            channel_id=channel_id,
-            tg_message_id=tg_message_id,
-            post_text=text,
-            post_url=url,
-            score=0.5,
-            intent="manual",
-            status="pending",
-        )
+        channels = await queries.list_channels(session)
+        if not any(channel.id == channel_id for channel in channels):
+            await message.answer("Channel not found. Create it first with /add_channel @manual thailand relocation")
+            return
+        try:
+            post = await queries.create_post(
+                session,
+                channel_id=channel_id,
+                tg_message_id=tg_message_id,
+                post_text=text,
+                post_url=url,
+                score=0.5,
+                intent="manual",
+                status="pending",
+            )
+        except SQLAlchemyError as error:
+            await session.rollback()
+            await message.answer(f"Could not add item: {error.__class__.__name__}")
+            return
     await message.answer(f"Added pending item #{post.id}.")
 
 
