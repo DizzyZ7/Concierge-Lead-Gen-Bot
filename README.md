@@ -57,7 +57,13 @@ docker compose run --rm bot python -m scripts.seed_templates
 /add_channel @manual thailand relocation
 ```
 
-3. Add an item manually:
+3. For instant reviewer delivery during testing, set delay to zero:
+
+```text
+/set_channel_delay 1 0 0
+```
+
+4. Add an item manually:
 
 ```text
 /add_item 1 https://t.me/example/123 Текст поста или запроса клиента
@@ -69,15 +75,21 @@ Use `-` instead of URL if there is no link:
 /add_item 1 - Текст без ссылки
 ```
 
-4. Open pending list:
+5. Open pending list:
 
 ```text
 /pending
 ```
 
-5. Press `Approve`.
-6. The bot creates a draft and sends it to `REVIEWER_CHAT_IDS`.
-7. Reviewer checks the text, sends it manually, then presses `Done`.
+6. Press `Approve`.
+7. The bot creates a draft and sends it to `REVIEWER_CHAT_IDS`.
+8. Reviewer checks the text, sends it manually, then presses `Done`.
+
+If an approved draft is waiting because of delay, force it into the reviewer queue:
+
+```text
+/dispatch_now <post_id>
+```
 
 ## Commands
 
@@ -100,6 +112,7 @@ Use `-` instead of URL if there is no link:
 /channels
 /add_channel @manual thailand relocation
 /set_channel_limit 1 5
+/set_channel_delay 1 0 0
 ```
 
 ### Items and review
@@ -107,6 +120,7 @@ Use `-` instead of URL if there is no link:
 ```text
 /add_item <channel_id> <url_or_dash> <text>
 /pending
+/dispatch_now <post_id>
 /edit_draft <post_id> <new text>
 /review_queue
 ```
