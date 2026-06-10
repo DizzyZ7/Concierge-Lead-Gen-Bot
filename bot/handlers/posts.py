@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from html import escape
 
 from aiogram import F, Router
@@ -50,6 +51,32 @@ async def pending_callback(callback: CallbackQuery, session_factory: async_sessi
     await send_pending(callback.message, session_factory)
 
 
+@router.message(Command("add_item"))
+async def add_item_command(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    if not message.text:
+        return
+    parts = message.text.split(maxsplit=3)
+    if len(parts) != 4 or not parts[1].isdigit():
+        await message.answer("Usage: /add_item <channel_id> <url_or_dash> <text>")
+        return
+    channel_id = int(parts[1])
+    url = None if parts[2] == "-" else parts[2]
+    text = parts[3]
+    tg_message_id = int(datetime.now(timezone.utc).timestamp() * 1000)
+    async with session_factory() as session:
+        post = await queries.create_post(
+            session,
+            channel_id=channel_id,
+            tg_message_id=tg_message_id,
+            post_text=text,
+            post_url=url,
+            score=0.5,
+            intent="manual",
+            status="pending",
+        )
+    await message.answer(f"Added pending item #{post.id}.")
+
+
 @router.callback_query(F.data.startswith("post:approve:"))
 async def approve_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession], ai_service: AIService) -> None:
     post_id = int(callback.data.split(":")[-1])
@@ -67,6 +94,10 @@ async def approve_callback(callback: CallbackQuery, session_factory: async_sessi
             delay_min=post.channel.review_delay_min,
             delay_max=post.channel.review_delay_max,
         )
+        if source == "ai":
+            await queries.increment_stat(session, "ai_drafts", 1)
+        else:
+            await queries.increment_stat(session, "template_drafts", 1)
     await callback.message.edit_text(f"Approved #{post_id}. It will be sent to reviewer queue.")
     await callback.answer()
 
