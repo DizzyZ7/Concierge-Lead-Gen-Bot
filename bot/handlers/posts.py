@@ -112,6 +112,19 @@ async def approve_callback(callback: CallbackQuery, session_factory: async_sessi
     await callback.answer()
 
 
+@router.message(Command("dispatch_now"))
+async def dispatch_now_command(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    if not message.text:
+        return
+    parts = message.text.split(maxsplit=1)
+    if len(parts) != 2 or not parts[1].isdigit():
+        await message.answer("Usage: /dispatch_now <post_id>")
+        return
+    async with session_factory() as session:
+        ok = await queries.dispatch_now(session, int(parts[1]))
+    await message.answer("Draft will be sent to reviewer within one scheduler tick." if ok else "Approved draft not found.")
+
+
 @router.callback_query(F.data.startswith("post:skip:"))
 async def skip_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession]) -> None:
     post_id = int(callback.data.split(":")[-1])
