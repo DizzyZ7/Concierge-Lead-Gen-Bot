@@ -85,7 +85,10 @@ Use `-` instead of URL if there is no link:
 
 ```text
 /start
+/help
+/health
 /stats
+/queue_stats
 /settings
 /pause
 /resume
@@ -128,6 +131,15 @@ A deal adds 40 percent of the amount to the revenue counter.
 ```
 
 Templates are used before hardcoded fallback drafts.
+
+## Health and operations
+
+```text
+/health
+/queue_stats
+```
+
+`/health` checks the database connection and pause flag. `/queue_stats` shows how many items are in pending, approved, reviewer queue, done and skipped statuses.
 
 ## Important notes
 
