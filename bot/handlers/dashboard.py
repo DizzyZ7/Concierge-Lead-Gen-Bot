@@ -28,10 +28,12 @@ Channels:
 /channels
 /add_channel @manual thailand relocation
 /set_channel_limit 1 5
+/set_channel_delay 1 0 0
 
 Items:
 /add_item <channel_id> <url_or_dash> <text>
 /pending
+/dispatch_now <post_id>
 /edit_draft <post_id> <new text>
 /review_queue
 
