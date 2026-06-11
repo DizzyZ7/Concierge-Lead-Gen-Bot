@@ -2,12 +2,14 @@
 
 Reviewer-first Telegram admin bot for a concierge workflow.
 
-The current GitHub version is a safe MVP: it does not publish anything automatically. The owner adds or approves an item, the bot prepares a draft, then sends that draft to a human reviewer in private messages. The reviewer manually checks the text, sends it where needed, and marks it as done in the bot.
+The bot does not publish anything automatically. It can read configured sources, find relevant posts with Claude, prepare a draft, and send it to a human reviewer in private messages. The reviewer can edit, cancel, approve, or mark the item as done.
 
 ## Stack
 
 - Python 3.12
 - aiogram 3.x
+- Telethon read-only user session
+- Claude via Anthropic SDK
 - PostgreSQL
 - SQLAlchemy 2.0 async
 - Alembic
@@ -28,6 +30,7 @@ ADMIN_IDS=123456789
 REVIEWER_CHAT_IDS=123456789
 DATABASE_URL=postgresql+asyncpg://concierge:concierge@db:5432/concierge
 TIMEZONE=Asia/Bangkok
+ANTHROPIC_API_KEY=sk-ant-...
 ```
 
 Run:
@@ -48,7 +51,58 @@ Optional seed for starter templates:
 docker compose run --rm bot python -m scripts.seed_templates
 ```
 
-## MVP workflow
+## Claude and source monitoring setup
+
+1. Add Telegram API data and Claude key to `.env`:
+
+```env
+ANTHROPIC_API_KEY=sk-ant-...
+ANTHROPIC_MODEL=claude-3-5-haiku-20241022
+RELEVANCE_THRESHOLD=0.65
+TG_API_ID=123456
+TG_API_HASH=your_api_hash
+TG_PHONE=+79999999999
+TG_SESSION_NAME=concierge_session
+```
+
+2. Create the Telegram user session once:
+
+```bash
+docker compose run --rm bot python -m services.session_login
+```
+
+3. Add sources in the admin bot:
+
+```text
+/add_channel @some_channel thailand relocation
+/add_channel @some_realty_channel thailand realty
+```
+
+4. Enable monitoring:
+
+```env
+PARSER_ENABLED=true
+PARSER_INTERVAL_MINUTES=10
+PARSER_LIMIT_PER_CHANNEL=20
+```
+
+5. Restart:
+
+```bash
+docker compose restart bot
+```
+
+Flow after that:
+
+```text
+Source post
+  -> Claude relevance score
+  -> relevant item gets a draft
+  -> reviewer receives a private card
+  -> reviewer edits / cancels / approves / marks done
+```
+
+## Manual MVP workflow
 
 1. Open the admin bot and press `/start`.
 2. Add a source bucket:
@@ -169,7 +223,7 @@ Templates are used before hardcoded fallback drafts.
 - The GitHub MVP is reviewer-first and does not send public messages automatically.
 - Every reviewer must open the bot and press `/start`, otherwise Telegram will not allow the bot to write first.
 - `.env` and Telegram session files must never be committed.
-- The full experimental version with user session parsing is not required for the MVP launch.
+- The user session is used only for reading configured sources.
 
 ## Project structure
 
