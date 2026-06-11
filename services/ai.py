@@ -40,17 +40,22 @@ class AIService:
         if self.client:
             try:
                 prompt = (
-                    "Return compact JSON only: score 0..1, intent, reason. "
-                    "Relevant topics: relocation, housing, visa, realty, tourism, investment, expat life. "
-                    "Reason must be one short Russian sentence for a human reviewer. "
+                    "Return compact JSON only with fields: score, intent, reason, summary, angle. "
+                    "score must be 0..1. intent examples: relocation, realty, visa, tourism, investment, expat_life, unknown. "
+                    "Relevant topics: Thailand relocation, housing, visa, real estate, tourism, investment, expat life. "
+                    "reason: one short Russian sentence explaining why this item matters. "
+                    "summary: one short Russian sentence summarizing the source item. "
+                    "angle: one short Russian sentence suggesting how a human reviewer can enter the conversation naturally. "
                     f"Geo: {geo}. Text: {post_text[:3500]}"
                 )
-                raw = await self._claude(prompt, 220)
+                raw = await self._claude(prompt, 320)
                 parsed = self._parse_json(raw)
                 return {
                     "score": max(0.0, min(float(parsed.get("score", 0.5)), 1.0)),
                     "intent": str(parsed.get("intent", "unknown")),
                     "reason": str(parsed.get("reason", "Пост может быть полезен для ручной проверки.")),
+                    "summary": str(parsed.get("summary", "Краткое резюме не сформировано.")),
+                    "angle": str(parsed.get("angle", "Можно аккуратно зайти с полезным уточнением или советом.")),
                 }
             except Exception as error:
                 log.warning("claude_score_failed", error=str(error))
@@ -100,7 +105,13 @@ class AIService:
             end = raw.rfind("}")
             if start >= 0 and end > start:
                 return json.loads(raw[start : end + 1])
-            return {"score": 0.5, "intent": "unknown", "reason": "Пост требует ручной проверки."}
+            return {
+                "score": 0.5,
+                "intent": "unknown",
+                "reason": "Пост требует ручной проверки.",
+                "summary": "Краткое резюме не сформировано.",
+                "angle": "Можно аккуратно зайти с полезным уточнением или советом.",
+            }
 
     @staticmethod
     def _fallback_score(post_text: str, geo: str) -> dict[str, Any]:
@@ -115,4 +126,6 @@ class AIService:
         geo_bonus = 1 if geo.lower() in text else 0
         score = min(0.95, 0.5 + hits * 0.12 + geo_bonus * 0.08)
         reason = "Есть совпадения с темами по Таиланду, жилью, визам или релокации." if hits else "Пост сохранен для ручной проверки."
-        return {"score": score, "intent": best_intent, "reason": reason}
+        summary = "Пост связан с потенциальным вопросом по Таиланду." if hits else "Пост требует ручной оценки."
+        angle = "Можно зайти с практическим советом и уточняющим вопросом." if hits else "Лучше проверить вручную перед реакцией."
+        return {"score": score, "intent": best_intent, "reason": reason, "summary": summary, "angle": angle}
