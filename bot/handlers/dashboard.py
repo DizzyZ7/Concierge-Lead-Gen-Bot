@@ -33,9 +33,11 @@ Channels:
 Items:
 /add_item <channel_id> <url_or_dash> <text>
 /pending
+/approved_queue
+/review_queue
+/draft <post_id>
 /dispatch_now <post_id>
 /edit_draft <post_id> <new text>
-/review_queue
 
 Leads:
 /leads
