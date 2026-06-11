@@ -39,6 +39,7 @@ class ParsedPost(Base):
     post_text: Mapped[str | None] = mapped_column(Text)
     post_url: Mapped[str | None] = mapped_column(Text)
     relevance_score: Mapped[float | None] = mapped_column()
+    relevance_reason: Mapped[str | None] = mapped_column(Text)
     intent: Mapped[str] = mapped_column(Text, nullable=False, server_default="unknown")
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
