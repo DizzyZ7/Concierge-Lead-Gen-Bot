@@ -40,15 +40,17 @@ class AIService:
         if self.client:
             try:
                 prompt = (
-                    "Return compact JSON with score from 0 to 1 and intent. "
+                    "Return compact JSON only: score 0..1, intent, reason. "
                     "Relevant topics: relocation, housing, visa, realty, tourism, investment, expat life. "
+                    "Reason must be one short Russian sentence for a human reviewer. "
                     f"Geo: {geo}. Text: {post_text[:3500]}"
                 )
-                raw = await self._claude(prompt, 160)
+                raw = await self._claude(prompt, 220)
                 parsed = self._parse_json(raw)
                 return {
                     "score": max(0.0, min(float(parsed.get("score", 0.5)), 1.0)),
                     "intent": str(parsed.get("intent", "unknown")),
+                    "reason": str(parsed.get("reason", "Пост может быть полезен для ручной проверки.")),
                 }
             except Exception as error:
                 log.warning("claude_score_failed", error=str(error))
@@ -98,7 +100,7 @@ class AIService:
             end = raw.rfind("}")
             if start >= 0 and end > start:
                 return json.loads(raw[start : end + 1])
-            return {"score": 0.5, "intent": "unknown"}
+            return {"score": 0.5, "intent": "unknown", "reason": "Пост требует ручной проверки."}
 
     @staticmethod
     def _fallback_score(post_text: str, geo: str) -> dict[str, Any]:
@@ -112,4 +114,5 @@ class AIService:
                 best_intent = intent
         geo_bonus = 1 if geo.lower() in text else 0
         score = min(0.95, 0.5 + hits * 0.12 + geo_bonus * 0.08)
-        return {"score": score, "intent": best_intent}
+        reason = "Есть совпадения с темами по Таиланду, жилью, визам или релокации." if hits else "Пост сохранен для ручной проверки."
+        return {"score": score, "intent": best_intent, "reason": reason}
