@@ -121,6 +121,7 @@ async def create_post(
     score: float,
     intent: str,
     status: str,
+    relevance_reason: str | None = None,
 ) -> ParsedPost:
     post = ParsedPost(
         channel_id=channel_id,
@@ -128,6 +129,7 @@ async def create_post(
         post_text=post_text,
         post_url=post_url,
         relevance_score=score,
+        relevance_reason=relevance_reason,
         intent=intent,
         status=status,
     )
