@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     tg_api_hash: str | None = Field(None, alias="TG_API_HASH")
     tg_phone: str | None = Field(None, alias="TG_PHONE")
     tg_session_name: str = Field("concierge_session", alias="TG_SESSION_NAME")
+
+    parser_enabled: bool = Field(False, alias="PARSER_ENABLED")
+    parser_interval_minutes: int = Field(10, alias="PARSER_INTERVAL_MINUTES")
+    parser_limit_per_channel: int = Field(20, alias="PARSER_LIMIT_PER_CHANNEL")
+    relevance_threshold: float = Field(0.65, alias="RELEVANCE_THRESHOLD")
+
     anthropic_api_key: str | None = Field(None, alias="ANTHROPIC_API_KEY")
     anthropic_model: str = Field("claude-3-5-haiku-20241022", alias="ANTHROPIC_MODEL")
 
@@ -64,6 +70,16 @@ class Settings(BaseSettings):
         if not self.reviewer_chat_ids_raw:
             return self.admin_ids
         return {int(item.strip()) for item in self.reviewer_chat_ids_raw.split(",") if item.strip()}
+
+    @property
+    def parser_ready(self) -> bool:
+        """Return True when read-only Telegram monitoring can be started."""
+        return bool(self.parser_enabled and self.tg_api_id and self.tg_api_hash)
+
+    @property
+    def claude_ready(self) -> bool:
+        """Return True when Claude API is configured."""
+        return bool(self.anthropic_api_key)
 
 
 @lru_cache
