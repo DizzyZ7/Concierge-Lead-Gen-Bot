@@ -137,15 +137,19 @@ async def create_post(
     return post
 
 
-async def list_pending_posts(session: AsyncSession, limit: int = 10) -> Sequence[ParsedPost]:
+async def list_posts_by_status(session: AsyncSession, status: str, limit: int = 20) -> Sequence[ParsedPost]:
     result = await session.scalars(
         select(ParsedPost)
         .options(selectinload(ParsedPost.channel), selectinload(ParsedPost.draft))
-        .where(ParsedPost.status == "pending")
+        .where(ParsedPost.status == status)
         .order_by(ParsedPost.created_at.desc())
         .limit(limit)
     )
     return result.all()
+
+
+async def list_pending_posts(session: AsyncSession, limit: int = 10) -> Sequence[ParsedPost]:
+    return await list_posts_by_status(session, "pending", limit)
 
 
 async def get_post_with_details(session: AsyncSession, post_id: int) -> ParsedPost | None:
@@ -251,14 +255,7 @@ async def mark_reviewer_done(session: AsyncSession, post_id: int) -> bool:
 
 
 async def list_review_queue(session: AsyncSession, limit: int = 20) -> Sequence[ParsedPost]:
-    result = await session.scalars(
-        select(ParsedPost)
-        .options(selectinload(ParsedPost.channel), selectinload(ParsedPost.draft))
-        .where(ParsedPost.status == "sent_to_reviewer")
-        .order_by(ParsedPost.created_at.desc())
-        .limit(limit)
-    )
-    return result.all()
+    return await list_posts_by_status(session, "sent_to_reviewer", limit)
 
 
 async def count_drafts_today(session: AsyncSession, channel_id: int | None = None) -> int:
