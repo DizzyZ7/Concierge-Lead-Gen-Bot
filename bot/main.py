@@ -5,7 +5,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from bot.handlers import channels, dashboard, leads, posts, settings as settings_handlers, templates
+from bot.handlers import channels, dashboard, leads, posts, review_extras, settings as settings_handlers, templates
 from bot.middlewares.admin_check import AdminCheckMiddleware
 from core.config import Settings
 from services.ai import AIService
@@ -28,6 +28,7 @@ def create_dispatcher(
     dispatcher.include_router(dashboard.router)
     dispatcher.include_router(channels.router)
     dispatcher.include_router(posts.router)
+    dispatcher.include_router(review_extras.router)
     dispatcher.include_router(leads.router)
     dispatcher.include_router(templates.router)
     dispatcher.include_router(settings_handlers.router)
