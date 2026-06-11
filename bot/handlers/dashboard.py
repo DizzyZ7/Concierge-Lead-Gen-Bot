@@ -35,6 +35,7 @@ Items:
 /pending
 /approved_queue
 /review_queue
+/source <post_id>
 /draft <post_id>
 /dispatch_now <post_id>
 /edit_draft <post_id> <new text>
