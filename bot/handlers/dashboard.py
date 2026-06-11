@@ -36,6 +36,7 @@ Items:
 /approved_queue
 /review_queue
 /saved_queue
+/content_ideas
 /source <post_id>
 /draft <post_id>
 /dispatch_now <post_id>
@@ -72,7 +73,18 @@ async def render_dashboard(session_factory: async_sessionmaker[AsyncSession]) ->
 
 
 async def render_queue_stats(session_factory: async_sessionmaker[AsyncSession]) -> str:
-    statuses = ["pending", "approved", "sent_to_reviewer", "saved", "reviewer_done", "skipped"]
+    statuses = [
+        "pending",
+        "approved",
+        "sent_to_reviewer",
+        "saved",
+        "content_idea",
+        "commented",
+        "lead",
+        "not_relevant",
+        "reviewer_done",
+        "skipped",
+    ]
     async with session_factory() as session:
         rows = await session.execute(
             select(ParsedPost.status, func.count(ParsedPost.id)).group_by(ParsedPost.status)
