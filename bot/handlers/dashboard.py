@@ -20,6 +20,8 @@ Main:
 /health
 /stats
 /queue_stats
+/daily_report
+/channel_stats
 /settings
 /pause
 /resume
