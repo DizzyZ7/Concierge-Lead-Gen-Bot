@@ -8,6 +8,7 @@ from core.config import Settings
 from core.logger import get_logger
 from db import queries
 from services.ai import AIService
+from services.text_tools import text_hash
 
 log = get_logger(__name__)
 
@@ -47,10 +48,16 @@ class ParserService:
                 message_id = int(message.id)
                 if await queries.post_exists(session, channel_id, message_id):
                     continue
+                hash_value = text_hash(text)
+                if await queries.text_hash_exists(session, hash_value):
+                    log.info("duplicate_post_skipped", channel=username, message_id=message_id)
+                    continue
                 score = await self.ai_service.score_post(text, geo)
                 value = float(score.get("score", 0.5))
                 intent = str(score.get("intent", "unknown"))
                 reason = str(score.get("reason", "Пост требует ручной проверки."))
+                summary = str(score.get("summary", "Краткое резюме не сформировано."))
+                angle = str(score.get("angle", "Можно аккуратно зайти с полезным уточнением или советом."))
                 status = "pending" if value < self.settings.relevance_threshold else "approved"
                 post_url = f"https://t.me/{username.lstrip('@')}/{message_id}"
                 post = await queries.create_post(
@@ -63,6 +70,9 @@ class ParserService:
                     intent=intent,
                     status="pending",
                     relevance_reason=reason,
+                    content_summary=summary,
+                    suggested_angle=angle,
+                    text_hash=hash_value,
                 )
                 if status == "approved":
                     draft_text, source = await self.ai_service.generate_draft(text, geo, intent, session)
