@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+AutomationLevel = Literal["manual", "assisted", "supervised", "authorized_auto"]
 
 
 class Settings(BaseSettings):
@@ -20,6 +22,8 @@ class Settings(BaseSettings):
     timezone: str = Field("Asia/Bangkok", alias="TIMEZONE")
     auto_approve: bool = Field(False, alias="AUTO_APPROVE")
     reviewer_mode: bool = Field(True, alias="REVIEWER_MODE")
+    automation_level: AutomationLevel = Field("assisted", alias="AUTOMATION_LEVEL")
+    outbound_enabled: bool = Field(False, alias="OUTBOUND_ENABLED")
 
     tg_api_id: int | None = Field(None, alias="TG_API_ID")
     tg_api_hash: str | None = Field(None, alias="TG_API_HASH")
@@ -80,6 +84,11 @@ class Settings(BaseSettings):
     def claude_ready(self) -> bool:
         """Return True when Claude API is configured."""
         return bool(self.anthropic_api_key)
+
+    @property
+    def outbound_ready(self) -> bool:
+        """Return True only when future outbound automation is explicitly enabled."""
+        return bool(self.outbound_enabled and self.automation_level in {"supervised", "authorized_auto"})
 
 
 @lru_cache
