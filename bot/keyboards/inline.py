@@ -7,6 +7,8 @@ def main_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="Dashboard", callback_data="nav:dashboard")],
+            [InlineKeyboardButton(text="Daily report", callback_data="nav:daily_report")],
+            [InlineKeyboardButton(text="Channel stats", callback_data="nav:channel_stats")],
             [InlineKeyboardButton(text="Pending", callback_data="nav:pending")],
             [InlineKeyboardButton(text="Approved", callback_data="nav:approved_queue")],
             [InlineKeyboardButton(text="Review queue", callback_data="nav:review_queue")],
