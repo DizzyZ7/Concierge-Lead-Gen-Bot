@@ -50,6 +50,7 @@ class ParserService:
                 score = await self.ai_service.score_post(text, geo)
                 value = float(score.get("score", 0.5))
                 intent = str(score.get("intent", "unknown"))
+                reason = str(score.get("reason", "Пост требует ручной проверки."))
                 status = "pending" if value < self.settings.relevance_threshold else "approved"
                 post_url = f"https://t.me/{username.lstrip('@')}/{message_id}"
                 post = await queries.create_post(
@@ -61,6 +62,7 @@ class ParserService:
                     score=value,
                     intent=intent,
                     status="pending",
+                    relevance_reason=reason,
                 )
                 if status == "approved":
                     draft_text, source = await self.ai_service.generate_draft(text, geo, intent, session)
