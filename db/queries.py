@@ -111,6 +111,13 @@ async def post_exists(session: AsyncSession, channel_id: int, tg_message_id: int
     return row is not None
 
 
+async def text_hash_exists(session: AsyncSession, value: str | None) -> bool:
+    if not value:
+        return False
+    row = await session.scalar(select(ParsedPost.id).where(ParsedPost.text_hash == value).limit(1))
+    return row is not None
+
+
 async def create_post(
     session: AsyncSession,
     *,
@@ -122,14 +129,20 @@ async def create_post(
     intent: str,
     status: str,
     relevance_reason: str | None = None,
+    content_summary: str | None = None,
+    suggested_angle: str | None = None,
+    text_hash: str | None = None,
 ) -> ParsedPost:
     post = ParsedPost(
         channel_id=channel_id,
         tg_message_id=tg_message_id,
         post_text=post_text,
         post_url=post_url,
+        text_hash=text_hash,
         relevance_score=score,
         relevance_reason=relevance_reason,
+        content_summary=content_summary,
+        suggested_angle=suggested_angle,
         intent=intent,
         status=status,
     )
@@ -198,22 +211,21 @@ async def dispatch_now(session: AsyncSession, post_id: int) -> bool:
     return True
 
 
-async def mark_post_saved(session: AsyncSession, post_id: int) -> bool:
+async def mark_post_status(session: AsyncSession, post_id: int, status: str) -> bool:
     post = await session.get(ParsedPost, post_id)
     if not post:
         return False
-    post.status = "saved"
+    post.status = status
     await session.commit()
     return True
+
+
+async def mark_post_saved(session: AsyncSession, post_id: int) -> bool:
+    return await mark_post_status(session, post_id, "saved")
 
 
 async def skip_post(session: AsyncSession, post_id: int) -> bool:
-    post = await session.get(ParsedPost, post_id)
-    if not post:
-        return False
-    post.status = "skipped"
-    await session.commit()
-    return True
+    return await mark_post_status(session, post_id, "skipped")
 
 
 async def update_draft_text(session: AsyncSession, post_id: int, text: str) -> bool:
@@ -271,6 +283,10 @@ async def list_review_queue(session: AsyncSession, limit: int = 20) -> Sequence[
 
 async def list_saved_posts(session: AsyncSession, limit: int = 20) -> Sequence[ParsedPost]:
     return await list_posts_by_status(session, "saved", limit)
+
+
+async def list_content_ideas(session: AsyncSession, limit: int = 20) -> Sequence[ParsedPost]:
+    return await list_posts_by_status(session, "content_idea", limit)
 
 
 async def count_drafts_today(session: AsyncSession, channel_id: int | None = None) -> int:
