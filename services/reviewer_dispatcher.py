@@ -37,7 +37,17 @@ class ReviewerDispatcher:
             for draft in drafts:
                 post = draft.post
                 reviewer_id = reviewers[draft.id % len(reviewers)]
-                text = self._render_card(draft.id, post.id, post.channel.channel_username, post.post_url, post.post_text, draft.draft_text)
+                text = self._render_card(
+                    draft_id=draft.id,
+                    post_id=post.id,
+                    channel=post.channel.channel_username,
+                    url=post.post_url,
+                    source_text=post.post_text,
+                    draft_text=draft.draft_text,
+                    score=post.relevance_score,
+                    intent=post.intent,
+                    reason=post.relevance_reason,
+                )
                 try:
                     sent = await self.bot.send_message(
                         reviewer_id,
@@ -52,19 +62,29 @@ class ReviewerDispatcher:
 
     @staticmethod
     def _render_card(
+        *,
         draft_id: int,
         post_id: int,
         channel: str,
         url: str | None,
         source_text: str | None,
         draft_text: str,
+        score: float | None,
+        intent: str | None,
+        reason: str | None,
     ) -> str:
         source = trim(source_text, 900)
         draft = trim(draft_text, 1800)
+        score_text = f"{score:.2f}" if score is not None else "-"
+        reason_text = trim(reason, 350) or "Пост отмечен как потенциально полезный."
         return (
-            f"Review draft #{draft_id} for item #{post_id}\n"
+            f"Lead radar item #{post_id}\n"
+            f"Draft #{draft_id}\n"
             f"Channel: {escape(channel)}\n"
+            f"Category: {escape(intent or 'unknown')}\n"
+            f"Score: {escape(score_text)}\n"
+            f"Why relevant: {escape(reason_text)}\n"
             f"URL: {escape(url or '-')}\n\n"
             f"Source:\n{escape(source)}\n\n"
-            f"Draft to check and send manually:\n<code>{escape(draft)}</code>"
+            f"Suggested comment:\n<code>{escape(draft)}</code>"
         )
