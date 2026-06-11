@@ -198,6 +198,15 @@ async def dispatch_now(session: AsyncSession, post_id: int) -> bool:
     return True
 
 
+async def mark_post_saved(session: AsyncSession, post_id: int) -> bool:
+    post = await session.get(ParsedPost, post_id)
+    if not post:
+        return False
+    post.status = "saved"
+    await session.commit()
+    return True
+
+
 async def skip_post(session: AsyncSession, post_id: int) -> bool:
     post = await session.get(ParsedPost, post_id)
     if not post:
@@ -258,6 +267,10 @@ async def mark_reviewer_done(session: AsyncSession, post_id: int) -> bool:
 
 async def list_review_queue(session: AsyncSession, limit: int = 20) -> Sequence[ParsedPost]:
     return await list_posts_by_status(session, "sent_to_reviewer", limit)
+
+
+async def list_saved_posts(session: AsyncSession, limit: int = 20) -> Sequence[ParsedPost]:
+    return await list_posts_by_status(session, "saved", limit)
 
 
 async def count_drafts_today(session: AsyncSession, channel_id: int | None = None) -> int:
