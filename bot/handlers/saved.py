@@ -33,6 +33,8 @@ async def send_saved_queue(message: Message, session_factory: async_sessionmaker
             f"Category: {escape(post.intent)}\n"
             f"Score: {escape(score)}\n"
             f"Reason: {escape(post.relevance_reason or '-')}\n"
+            f"Summary: {escape(post.content_summary or '-')}\n"
+            f"Angle: {escape(post.suggested_angle or '-')}\n"
             f"URL: {escape(post.post_url or '-')}\n\n"
             f"Text:\n{escape(cut(post.post_text))}"
         )
