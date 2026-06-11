@@ -81,9 +81,16 @@ Use `-` instead of URL if there is no link:
 /pending
 ```
 
-6. Press `Approve`.
+6. Press `Approve now` for immediate routing, or `Approve` for normal delay.
 7. The bot creates a draft and sends it to `REVIEWER_CHAT_IDS`.
 8. Reviewer checks the text, sends it manually, then presses `Done`.
+
+Useful inspection commands:
+
+```text
+/approved_queue
+/draft <post_id>
+```
 
 If an approved draft is waiting because of delay, force it into the reviewer queue:
 
@@ -120,9 +127,11 @@ If an approved draft is waiting because of delay, force it into the reviewer que
 ```text
 /add_item <channel_id> <url_or_dash> <text>
 /pending
+/approved_queue
+/review_queue
+/draft <post_id>
 /dispatch_now <post_id>
 /edit_draft <post_id> <new text>
-/review_queue
 ```
 
 ### Leads and deals
