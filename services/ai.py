@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import random
 from typing import Any
 
 from anthropic import AsyncAnthropic
@@ -19,6 +20,14 @@ KEYWORDS: dict[str, tuple[str, ...]] = {
     "tourism": ("тур", "экскурсия", "отдых", "маршрут", "trip"),
     "investment": ("инвестиции", "купить", "доходность", "investment"),
 }
+
+COMMENT_STYLES = (
+    "коротко, по-человечески, без продаж, с одним уточняющим вопросом",
+    "дружелюбно и экспертно, как человек с опытом по Таиланду",
+    "мягкий заход: сначала полезная мысль, потом аккуратное предложение помочь",
+    "лаконичный комментарий без эмодзи и без рекламного тона",
+    "живой разговорный стиль, но без фамильярности и давления",
+)
 
 DRAFTS: dict[str, str] = {
     "thailand": "По Таиланду лучше заранее проверить район, документы и условия аренды. Если нужно быстро сориентироваться по шагам, можно написать в личку 🙏",
@@ -48,7 +57,7 @@ class AIService:
                     "angle: one short Russian sentence suggesting how a human reviewer can enter the conversation naturally. "
                     f"Geo: {geo}. Text: {post_text[:3500]}"
                 )
-                raw = await self._claude(prompt, 320)
+                raw = await self._claude(prompt, 320, temperature=0.35)
                 parsed = self._parse_json(raw)
                 return {
                     "score": max(0.0, min(float(parsed.get("score", 0.5)), 1.0)),
@@ -65,12 +74,16 @@ class AIService:
         """Generate a short draft for a human reviewer."""
         if self.client:
             try:
+                style = random.choice(COMMENT_STYLES)
                 prompt = (
-                    "Prepare one short natural Russian reply draft for a human reviewer. "
-                    "Helpful tone, no hard selling, max 3 short sentences. "
-                    f"Geo: {geo}. Intent: {intent}. Text: {post_text[:3500]}"
+                    "Prepare one natural Russian reply draft for a human reviewer. "
+                    "The reviewer will decide manually whether to send it. "
+                    "Do not sound like an advertisement, a bot, or a sales script. "
+                    "Do not repeat the same structure every time. "
+                    "Max 3 short sentences. "
+                    f"Style: {style}. Geo: {geo}. Intent: {intent}. Text: {post_text[:3500]}"
                 )
-                text = (await self._claude(prompt, 260)).strip().strip('"')
+                text = (await self._claude(prompt, 300, temperature=0.65)).strip().strip('"')
                 if len(text) >= 10:
                     return text, "ai"
             except Exception as error:
@@ -81,13 +94,13 @@ class AIService:
             return template.template_text, "template"
         return DRAFTS.get(geo, DRAFTS["default"]), "hardcoded"
 
-    async def _claude(self, user_prompt: str, max_tokens: int) -> str:
+    async def _claude(self, user_prompt: str, max_tokens: int, temperature: float = 0.4) -> str:
         if not self.client:
             raise RuntimeError("Claude client is not configured")
         message = await self.client.messages.create(
             model=self.settings.anthropic_model,
             max_tokens=max_tokens,
-            temperature=0.4,
+            temperature=temperature,
             messages=[{"role": "user", "content": user_prompt}],
         )
         chunks: list[str] = []
