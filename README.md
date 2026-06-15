@@ -45,10 +45,11 @@ The container starts with:
 alembic upgrade head && python main.py
 ```
 
-Optional seed for starter templates:
+Optional starter data:
 
 ```bash
 docker compose run --rm bot python -m scripts.seed_templates
+docker compose run --rm bot python -m scripts.seed_thailand_channels
 ```
 
 ## Claude and source monitoring setup
@@ -58,7 +59,7 @@ docker compose run --rm bot python -m scripts.seed_templates
 ```env
 ANTHROPIC_API_KEY=sk-ant-...
 ANTHROPIC_MODEL=claude-3-5-haiku-20241022
-RELEVANCE_THRESHOLD=0.65
+RELEVANCE_THRESHOLD=0.70
 TG_API_ID=123456
 TG_API_HASH=your_api_hash
 TG_PHONE=+79999999999
@@ -71,7 +72,11 @@ TG_SESSION_NAME=concierge_session
 docker compose run --rm bot python -m services.session_login
 ```
 
-3. Add sources in the admin bot:
+3. Seed Thailand monitoring sources or add them manually:
+
+```bash
+docker compose run --rm bot python -m scripts.seed_thailand_channels
+```
 
 ```text
 /add_channel @some_channel thailand relocation
@@ -144,6 +149,11 @@ Useful inspection commands:
 ```text
 /approved_queue
 /draft <post_id>
+/source <post_id>
+/saved_queue
+/content_ideas
+/daily_report
+/channel_stats
 ```
 
 If an approved draft is waiting because of delay, force it into the reviewer queue:
@@ -162,6 +172,8 @@ If an approved draft is waiting because of delay, force it into the reviewer que
 /health
 /stats
 /queue_stats
+/daily_report
+/channel_stats
 /settings
 /pause
 /resume
@@ -183,6 +195,9 @@ If an approved draft is waiting because of delay, force it into the reviewer que
 /pending
 /approved_queue
 /review_queue
+/saved_queue
+/content_ideas
+/source <post_id>
 /draft <post_id>
 /dispatch_now <post_id>
 /edit_draft <post_id> <new text>
@@ -214,9 +229,11 @@ Templates are used before hardcoded fallback drafts.
 ```text
 /health
 /queue_stats
+/daily_report
+/channel_stats
 ```
 
-`/health` checks the database connection and pause flag. `/queue_stats` shows how many items are in pending, approved, reviewer queue, done and skipped statuses.
+`/health` checks the database connection and pause flag. `/queue_stats` shows how many items are in every workflow status. `/daily_report` shows source quality summary. `/channel_stats` shows per-channel quality.
 
 ## Important notes
 
