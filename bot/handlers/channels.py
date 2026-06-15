@@ -14,6 +14,13 @@ from db import queries
 router = Router(name=__name__)
 
 
+def clean_csv(value: str | None) -> str | None:
+    if not value or value.strip() in {"-", "none", "None", "null"}:
+        return None
+    parts = [part.strip().lower() for part in value.split(",") if part.strip()]
+    return ",".join(dict.fromkeys(parts)) or None
+
+
 async def send_channels(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
     async with session_factory() as session:
         channels = await queries.list_channels(session)
@@ -25,10 +32,13 @@ async def send_channels(message: Message, session_factory: async_sessionmaker[As
             f"Channel #{channel.id}\n"
             f"Username: {escape(channel.channel_username)}\n"
             f"Geo: {escape(channel.geo)}\n"
-            f"Category: {escape(channel.category or '-') }\n"
+            f"Category: {escape(channel.category or '-')}\n"
             f"Active: {channel.is_active}\n"
             f"Daily draft limit: {channel.daily_draft_limit}\n"
-            f"Reviewer delay: {channel.review_delay_min}-{channel.review_delay_max} min"
+            f"Reviewer delay: {channel.review_delay_min}-{channel.review_delay_max} min\n"
+            f"Min score: {channel.min_score if channel.min_score is not None else '-'}\n"
+            f"Allowed intents: {escape(channel.allowed_intents or '-')}\n"
+            f"Blocked keywords: {escape(channel.blocked_keywords or '-')}"
         )
         await message.answer(text, reply_markup=channel_actions(channel.id))
 
@@ -94,6 +104,57 @@ async def set_channel_delay_command(message: Message, session_factory: async_ses
         return
     async with session_factory() as session:
         channel = await queries.set_channel_delay(session, channel_id, delay_min, delay_max)
+    await message.answer("Updated." if channel else "Channel not found.")
+
+
+@router.message(Command("set_channel_min_score"))
+async def set_channel_min_score_command(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    if not message.text:
+        return
+    parts = message.text.split(maxsplit=2)
+    if len(parts) != 3 or not parts[1].isdigit():
+        await message.answer("Usage: /set_channel_min_score <channel_id> <0.00-1.00|->")
+        return
+    value = None
+    if parts[2] != "-":
+        try:
+            value = float(parts[2].replace(",", "."))
+        except ValueError:
+            await message.answer("Min score must be a number from 0.00 to 1.00, or - to reset.")
+            return
+        if value < 0 or value > 1:
+            await message.answer("Min score must be from 0.00 to 1.00.")
+            return
+    async with session_factory() as session:
+        channel = await queries.set_channel_min_score(session, int(parts[1]), value)
+    await message.answer("Updated." if channel else "Channel not found.")
+
+
+@router.message(Command("set_channel_intents"))
+async def set_channel_intents_command(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    if not message.text:
+        return
+    parts = message.text.split(maxsplit=2)
+    if len(parts) != 3 or not parts[1].isdigit():
+        await message.answer("Usage: /set_channel_intents <channel_id> <intent1,intent2|->")
+        return
+    intents = clean_csv(parts[2])
+    async with session_factory() as session:
+        channel = await queries.set_channel_allowed_intents(session, int(parts[1]), intents)
+    await message.answer("Updated." if channel else "Channel not found.")
+
+
+@router.message(Command("set_channel_blocklist"))
+async def set_channel_blocklist_command(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    if not message.text:
+        return
+    parts = message.text.split(maxsplit=2)
+    if len(parts) != 3 or not parts[1].isdigit():
+        await message.answer("Usage: /set_channel_blocklist <channel_id> <word1,word2|->")
+        return
+    blocked = clean_csv(parts[2])
+    async with session_factory() as session:
+        channel = await queries.set_channel_blocked_keywords(session, int(parts[1]), blocked)
     await message.answer("Updated." if channel else "Channel not found.")
 
 
