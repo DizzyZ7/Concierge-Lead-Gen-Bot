@@ -24,6 +24,9 @@ class TargetChannel(Base):
     daily_draft_limit: Mapped[int] = mapped_column(Integer, nullable=False, server_default="5")
     review_delay_min: Mapped[int] = mapped_column(Integer, nullable=False, server_default="3")
     review_delay_max: Mapped[int] = mapped_column(Integer, nullable=False, server_default="15")
+    min_score: Mapped[float | None] = mapped_column(Numeric(4, 2))
+    allowed_intents: Mapped[str | None] = mapped_column(Text)
+    blocked_keywords: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     posts: Mapped[list["ParsedPost"]] = relationship(back_populates="channel", cascade="all, delete-orphan")
