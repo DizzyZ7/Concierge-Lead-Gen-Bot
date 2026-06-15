@@ -104,6 +104,36 @@ async def set_channel_delay(session: AsyncSession, channel_id: int, delay_min: i
     return channel
 
 
+async def set_channel_min_score(session: AsyncSession, channel_id: int, min_score: float | None) -> TargetChannel | None:
+    channel = await session.get(TargetChannel, channel_id)
+    if not channel:
+        return None
+    channel.min_score = min_score
+    await session.commit()
+    await session.refresh(channel)
+    return channel
+
+
+async def set_channel_allowed_intents(session: AsyncSession, channel_id: int, allowed_intents: str | None) -> TargetChannel | None:
+    channel = await session.get(TargetChannel, channel_id)
+    if not channel:
+        return None
+    channel.allowed_intents = allowed_intents
+    await session.commit()
+    await session.refresh(channel)
+    return channel
+
+
+async def set_channel_blocked_keywords(session: AsyncSession, channel_id: int, blocked_keywords: str | None) -> TargetChannel | None:
+    channel = await session.get(TargetChannel, channel_id)
+    if not channel:
+        return None
+    channel.blocked_keywords = blocked_keywords
+    await session.commit()
+    await session.refresh(channel)
+    return channel
+
+
 async def post_exists(session: AsyncSession, channel_id: int, tg_message_id: int) -> bool:
     row = await session.scalar(
         select(ParsedPost.id).where(ParsedPost.channel_id == channel_id, ParsedPost.tg_message_id == tg_message_id)
