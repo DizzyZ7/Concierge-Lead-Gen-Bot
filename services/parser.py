@@ -36,9 +36,25 @@ class ParserService:
                 return
             channels = await queries.list_active_channels(session)
             for channel in channels:
-                await self._scan_channel(session, channel.id, channel.channel_username, channel.geo)
+                await self._scan_channel(
+                    session,
+                    channel_id=channel.id,
+                    username=channel.channel_username,
+                    geo=channel.geo,
+                    delay_min=channel.review_delay_min,
+                    delay_max=channel.review_delay_max,
+                )
 
-    async def _scan_channel(self, session: AsyncSession, channel_id: int, username: str, geo: str) -> None:
+    async def _scan_channel(
+        self,
+        session: AsyncSession,
+        *,
+        channel_id: int,
+        username: str,
+        geo: str,
+        delay_min: int,
+        delay_max: int,
+    ) -> None:
         try:
             entity = await self.client.get_entity(username)
             async for message in self.client.iter_messages(entity, limit=self.settings.parser_limit_per_channel):
@@ -81,14 +97,22 @@ class ParserService:
                         post_id=post.id,
                         draft_text=draft_text,
                         source=source,
-                        delay_min=0,
-                        delay_max=0,
+                        delay_min=delay_min,
+                        delay_max=delay_max,
                     )
                     if source == "ai":
                         await queries.increment_stat(session, "ai_drafts", 1)
                     else:
                         await queries.increment_stat(session, "template_drafts", 1)
-                    log.info("relevant_post_routed", channel=username, post_id=post.id, score=value, intent=intent)
+                    log.info(
+                        "relevant_post_routed",
+                        channel=username,
+                        post_id=post.id,
+                        score=value,
+                        intent=intent,
+                        delay_min=delay_min,
+                        delay_max=delay_max,
+                    )
                 else:
                     log.info("post_saved_for_manual_review", channel=username, post_id=post.id, score=value, intent=intent)
         except FloodWaitError as error:
