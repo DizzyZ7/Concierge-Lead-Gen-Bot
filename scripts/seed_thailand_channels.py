@@ -16,19 +16,19 @@ class ChannelSeed:
     geo: str
     category: str
     daily_limit: int = 5
-    delay_min: int = 0
-    delay_max: int = 0
+    delay_min: int = 3
+    delay_max: int = 18
 
 
 CHANNELS = [
-    ChannelSeed("@phuket_f", "thailand", "realty", 8),
-    ChannelSeed("@ru_chat_thailand", "thailand", "expat_life", 8),
-    ChannelSeed("@thailand_russia_ru", "thailand", "relocation", 8),
-    ChannelSeed("@dengivezde", "thailand", "finance", 3),
-    ChannelSeed("@delaumoney", "thailand", "business", 3),
-    ChannelSeed("@TrueBusines", "thailand", "business", 3),
-    ChannelSeed("@nowtrendbrand", "thailand", "business", 3),
-    ChannelSeed("@BusinesAdvisor", "thailand", "business", 3),
+    ChannelSeed("@phuket_f", "thailand", "realty", 8, 3, 18),
+    ChannelSeed("@ru_chat_thailand", "thailand", "expat_life", 8, 4, 22),
+    ChannelSeed("@thailand_russia_ru", "thailand", "relocation", 8, 4, 22),
+    ChannelSeed("@dengivezde", "thailand", "finance", 3, 10, 40),
+    ChannelSeed("@delaumoney", "thailand", "business", 3, 10, 40),
+    ChannelSeed("@TrueBusines", "thailand", "business", 3, 10, 40),
+    ChannelSeed("@nowtrendbrand", "thailand", "business", 3, 10, 40),
+    ChannelSeed("@BusinesAdvisor", "thailand", "business", 3, 10, 40),
 ]
 
 
