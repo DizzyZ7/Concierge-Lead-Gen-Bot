@@ -31,6 +31,9 @@ Channels:
 /add_channel @manual thailand relocation
 /set_channel_limit 1 5
 /set_channel_delay 1 0 0
+/set_channel_min_score 1 0.70
+/set_channel_intents 1 realty,visa,relocation
+/set_channel_blocklist 1 crypto,casino
 
 Items:
 /add_item <channel_id> <url_or_dash> <text>
