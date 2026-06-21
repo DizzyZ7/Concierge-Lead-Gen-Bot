@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from telethon import TelegramClient
@@ -31,6 +32,13 @@ def to_float(value: Decimal | float | int | None, default: float) -> float:
     if value is None:
         return default
     return float(value)
+
+
+def is_stale(message_date: datetime | None, max_age_hours: int) -> bool:
+    if message_date is None:
+        return False
+    published_at = message_date if message_date.tzinfo else message_date.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) - published_at > timedelta(hours=max_age_hours)
 
 
 class ParserService:
@@ -67,6 +75,7 @@ class ParserService:
                     min_score=to_float(channel.min_score, self.settings.relevance_threshold),
                     allowed_intents=channel.allowed_intents,
                     blocked_keywords=channel.blocked_keywords,
+                    max_post_age_hours=getattr(self.settings, "parser_max_post_age_hours", 24),
                 )
 
     async def _scan_channel(
@@ -82,6 +91,7 @@ class ParserService:
         min_score: float,
         allowed_intents: str | None,
         blocked_keywords: str | None,
+        max_post_age_hours: int,
     ) -> None:
         allowed = split_csv(allowed_intents)
         drafts_today = await queries.count_drafts_today(session, channel_id)
@@ -91,6 +101,9 @@ class ParserService:
             async for message in self.client.iter_messages(entity, limit=self.settings.parser_limit_per_channel):
                 text = message.message or ""
                 if not text.strip():
+                    continue
+                if is_stale(getattr(message, "date", None), max_post_age_hours):
+                    log.info("stale_post_skipped", channel=username, message_id=int(message.id), max_age_hours=max_post_age_hours)
                     continue
                 if has_blocked_keyword(text, blocked_keywords):
                     log.info("blocked_keyword_post_skipped", channel=username, message_id=int(message.id))
