@@ -6,6 +6,7 @@ from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.keyboards.inline import saved_actions
@@ -54,7 +55,13 @@ async def mark_as_lead(session: AsyncSession, post_id: int) -> tuple[bool, int |
     )
     session.add(lead)
     post.status = "lead"
-    await session.flush()
+    try:
+        await session.flush()
+    except IntegrityError:
+        await session.rollback()
+        existing = await session.scalar(select(Lead).where(Lead.source_post_id == post_id).limit(1))
+        return bool(existing), existing.id if existing else None, False
+
     await queries.increment_stat(session, "leads_received", 1)
     await session.refresh(lead)
     return True, lead.id, True
