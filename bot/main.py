@@ -21,7 +21,7 @@ def create_dispatcher(
     session_factory: async_sessionmaker[AsyncSession],
     ai_service: AIService,
 ) -> Dispatcher:
-    dispatcher = Dispatcher(session_factory=session_factory, ai_service=ai_service)
+    dispatcher = Dispatcher(settings=settings, session_factory=session_factory, ai_service=ai_service)
     middleware = AdminCheckMiddleware(settings)
     dispatcher.message.middleware(middleware)
     dispatcher.callback_query.middleware(middleware)
