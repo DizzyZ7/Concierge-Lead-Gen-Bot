@@ -7,6 +7,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.keyboards.inline import main_menu
+from core.config import Settings
 from db import queries
 from db.models import ParsedPost
 
@@ -103,6 +104,14 @@ async def render_queue_stats(session_factory: async_sessionmaker[AsyncSession]) 
     return "\n".join(lines)
 
 
+def parser_state(settings: Settings) -> str:
+    if settings.parser_ready:
+        return "ready"
+    if settings.parser_enabled:
+        return "misconfigured"
+    return "disabled"
+
+
 @router.message(Command("start"))
 async def start_command(message: Message) -> None:
     await message.answer("Concierge reviewer bot is ready.", reply_markup=main_menu())
@@ -114,12 +123,26 @@ async def help_command(message: Message) -> None:
 
 
 @router.message(Command("health"))
-async def health_command(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
+async def health_command(
+    message: Message,
+    session_factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
+) -> None:
     try:
         async with session_factory() as session:
             await session.execute(text("select 1"))
             paused = await queries.get_setting(session, "paused", "false")
-        await message.answer(f"OK\nDatabase: connected\nPaused: {paused}")
+        lines = [
+            "OK",
+            "Database: connected",
+            f"Paused: {paused}",
+            f"Parser: {parser_state(settings)}",
+            f"Claude: {'ready' if settings.claude_ready else 'fallback only'}",
+            f"Reviewers: {len(settings.reviewer_chat_ids)}",
+            f"Automation: {settings.automation_level}",
+            f"Outbound: {'enabled' if settings.outbound_ready else 'disabled'}",
+        ]
+        await message.answer("\n".join(lines))
     except Exception as error:
         await message.answer(f"Health check failed: {error}")
 
