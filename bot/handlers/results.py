@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.keyboards.inline import saved_actions
+from bot.presentation import intent_label
 from db import queries
 from db.models import Lead
 
@@ -23,10 +24,10 @@ RESULT_STATUS_MAP = {
 }
 
 RESULT_LABELS = {
-    "commented": "Marked as commented",
-    "lead": "Marked as lead",
-    "content_idea": "Saved as content idea",
-    "not_relevant": "Marked as not relevant",
+    "commented": "Отмечено: комментарий написан",
+    "lead": "Отмечено: стал лидом",
+    "content_idea": "Сохранено как идея",
+    "not_relevant": "Отмечено как нерелевантное",
 }
 
 
@@ -51,7 +52,7 @@ async def mark_as_lead(session: AsyncSession, post_id: int) -> tuple[bool, int |
         source_post_id=post.id,
         geo=post.channel.geo if post.channel else None,
         intent=post.intent,
-        notes=f"Lead Radar item #{post.id}. Fill contact details after direct response.",
+        notes=f"Лид из Lead Radar, источник #{post.id}. Контактные данные нужно заполнить после прямого ответа.",
     )
     session.add(lead)
     post.status = "lead"
@@ -71,20 +72,20 @@ async def send_content_ideas(message: Message, session_factory: async_sessionmak
     async with session_factory() as session:
         posts = await queries.list_content_ideas(session, 20)
     if not posts:
-        await message.answer("Content ideas queue is empty.")
+        await message.answer("Идей пока нет.")
         return
     for post in posts:
-        channel = post.channel.channel_username if post.channel else "unknown"
+        channel = post.channel.channel_username if post.channel else "неизвестно"
         score = f"{post.relevance_score:.2f}" if post.relevance_score is not None else "-"
         text = (
-            f"Content idea #{post.id}\n"
-            f"Channel: {escape(channel)}\n"
-            f"Category: {escape(post.intent)}\n"
-            f"Score: {escape(score)}\n"
-            f"Summary: {escape(post.content_summary or '-')}\n"
-            f"Angle: {escape(post.suggested_angle or '-')}\n"
-            f"URL: {escape(post.post_url or '-')}\n\n"
-            f"Text:\n{escape(cut(post.post_text))}"
+            f"Идея #{post.id}\n"
+            f"Канал: {escape(channel)}\n"
+            f"Категория: {escape(intent_label(post.intent))}\n"
+            f"Оценка: {escape(score)}\n"
+            f"Кратко: {escape(post.content_summary or '-')}\n"
+            f"Как раскрыть: {escape(post.suggested_angle or '-')}\n"
+            f"Ссылка: {escape(post.post_url or '-')}\n\n"
+            f"Текст:\n{escape(cut(post.post_text))}"
         )
         await message.answer(text, reply_markup=saved_actions(post.id, post.post_url), disable_web_page_preview=True)
 
@@ -93,18 +94,18 @@ async def send_content_ideas(message: Message, session_factory: async_sessionmak
 async def result_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession]) -> None:
     parts = callback.data.split(":")
     if len(parts) != 3 or parts[1] not in RESULT_STATUS_MAP or not parts[2].isdigit():
-        await callback.answer("Unknown result", show_alert=True)
+        await callback.answer("Неизвестное действие", show_alert=True)
         return
     result = parts[1]
     post_id = int(parts[2])
     async with session_factory() as session:
         if result == "lead":
             ok, lead_id, created = await mark_as_lead(session, post_id)
-            label = f"Lead #{lead_id} created" if created else f"Lead #{lead_id} already exists"
+            label = f"Создан лид #{lead_id}" if created else f"Лид #{lead_id} уже существует"
         else:
             ok = await queries.mark_post_status(session, post_id, RESULT_STATUS_MAP[result])
             label = RESULT_LABELS[result]
-    await callback.answer(label if ok else "Not found", show_alert=not ok)
+    await callback.answer(label if ok else "Пост не найден", show_alert=not ok)
 
 
 @router.message(Command("content_ideas"))
