@@ -7,7 +7,7 @@ from bot.main import create_bot, create_dispatcher
 from core.config import Settings
 from db.models import Lead, ParsedPost, TargetChannel
 from services.ai import AIService
-from services.parser import ParserService, has_blocked_keyword, is_stale, split_csv, to_float
+from services.parser import ParserService, current_day_start_utc, has_blocked_keyword, is_stale, split_csv, to_float
 from services.text_tools import normalize_text, text_hash
 
 
@@ -18,6 +18,7 @@ def main() -> None:
     assert to_float(None, 0.7) == 0.7
     assert is_stale(datetime.now(timezone.utc) - timedelta(hours=25), 24)
     assert not is_stale(datetime.now(timezone.utc) - timedelta(hours=23), 24)
+    assert current_day_start_utc("Asia/Bangkok").tzinfo == timezone.utc
     assert normalize_text("HTTPS://t.me/test  Phuket!!!") == "phuket"
     assert len(text_hash("Thailand relocation")) == 64
     assert TargetChannel.__tablename__ == "target_channels"
