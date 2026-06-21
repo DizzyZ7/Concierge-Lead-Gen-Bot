@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import datetime, timedelta, timezone
 
 from aiogram import F, Router
 from aiogram.filters import Command
@@ -15,6 +16,7 @@ router = Router(name=__name__)
 IMPORTANT_STATUSES = [
     "pending",
     "approved",
+    "queued_by_limit",
     "sent_to_reviewer",
     "saved",
     "content_idea",
@@ -30,12 +32,16 @@ BAD_STATUSES = {"not_relevant", "skipped"}
 
 
 async def render_daily_report(session_factory: async_sessionmaker[AsyncSession]) -> str:
+    window_start = datetime.now(timezone.utc) - timedelta(hours=24)
     async with session_factory() as session:
         status_rows = await session.execute(
-            select(ParsedPost.status, func.count(ParsedPost.id)).group_by(ParsedPost.status)
+            select(ParsedPost.status, func.count(ParsedPost.id))
+            .where(ParsedPost.created_at >= window_start)
+            .group_by(ParsedPost.status)
         )
         intent_rows = await session.execute(
             select(ParsedPost.intent, func.count(ParsedPost.id))
+            .where(ParsedPost.created_at >= window_start)
             .group_by(ParsedPost.intent)
             .order_by(func.count(ParsedPost.id).desc())
             .limit(10)
@@ -43,7 +49,7 @@ async def render_daily_report(session_factory: async_sessionmaker[AsyncSession])
         top_channel_rows = await session.execute(
             select(TargetChannel.channel_username, func.count(ParsedPost.id))
             .join(ParsedPost, ParsedPost.channel_id == TargetChannel.id)
-            .where(ParsedPost.status.in_(GOOD_STATUSES))
+            .where(ParsedPost.created_at >= window_start, ParsedPost.status.in_(GOOD_STATUSES))
             .group_by(TargetChannel.channel_username)
             .order_by(func.count(ParsedPost.id).desc())
             .limit(5)
@@ -52,15 +58,17 @@ async def render_daily_report(session_factory: async_sessionmaker[AsyncSession])
     total = sum(status_counts.values())
     useful = sum(status_counts.get(status, 0) for status in GOOD_STATUSES)
     bad = sum(status_counts.get(status, 0) for status in BAD_STATUSES)
+    queued_by_limit = status_counts.get("queued_by_limit", 0)
     usefulness = round((useful / total) * 100, 1) if total else 0.0
     noise = round((bad / total) * 100, 1) if total else 0.0
 
     lines = [
-        "Thailand Lead Radar — report",
+        "Thailand Lead Radar — last 24 hours",
         "",
-        f"Total parsed: {total}",
+        f"New source items: {total}",
         f"Useful outcomes: {useful} ({usefulness}%)",
         f"Noise: {bad} ({noise}%)",
+        f"Queued by daily limits: {queued_by_limit}",
         "",
         "Statuses:",
     ]
@@ -106,7 +114,7 @@ async def render_channel_stats(session_factory: async_sessionmaker[AsyncSession]
         scored.append((score, channel, total, useful, bad, counts))
 
     scored.sort(reverse=True)
-    lines = ["Channel quality stats", ""]
+    lines = ["Channel quality stats — all time", ""]
     for score, channel, total, useful, bad, counts in scored[:20]:
         lines.append(f"{channel}")
         lines.append(f"  quality: {score}% | total: {total} | useful: {useful} | noise: {bad}")
