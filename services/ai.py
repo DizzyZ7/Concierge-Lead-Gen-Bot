@@ -18,7 +18,10 @@ KEYWORDS: dict[str, tuple[str, ...]] = {
     "realty": ("жилье", "аренда", "квартира", "вилла", "condo", "real estate", "rent"),
     "visa": ("виза", "визаран", "work permit", "permit", "внж"),
     "tourism": ("тур", "экскурсия", "отдых", "маршрут", "trip"),
-    "investment": ("инвестиции", "купить", "доходность", "investment"),
+    "investment": ("инвестиции", "купить", "доходность", "investment", "инвестор"),
+    "business": ("бизнес", "предприниматель", "компания", "партнерство", "franchise", "стартап"),
+    "finance": ("финансы", "деньги", "налоги", "банк", "платеж", "валюта", "доход"),
+    "expat_life": ("экспат", "жизнь в таиланде", "местные", "быт", "комьюнити"),
 }
 
 COMMENT_STYLES = (
@@ -50,8 +53,9 @@ class AIService:
             try:
                 prompt = (
                     "Return compact JSON only with fields: score, intent, reason, summary, angle. "
-                    "score must be 0..1. intent examples: relocation, realty, visa, tourism, investment, expat_life, unknown. "
-                    "Relevant topics: Thailand relocation, housing, visa, real estate, tourism, investment, expat life. "
+                    "score must be 0..1. "
+                    "intent must be exactly one of: relocation, realty, visa, tourism, investment, business, finance, expat_life, unknown. "
+                    "Relevant topics: Thailand relocation, housing, visa, real estate, tourism, investment, business, finance, expat life. "
                     "reason: one short Russian sentence explaining why this item matters. "
                     "summary: one short Russian sentence summarizing the source item. "
                     "angle: one short Russian sentence suggesting how a human reviewer can enter the conversation naturally. "
@@ -61,7 +65,7 @@ class AIService:
                 parsed = self._parse_json(raw)
                 return {
                     "score": max(0.0, min(float(parsed.get("score", 0.5)), 1.0)),
-                    "intent": str(parsed.get("intent", "unknown")),
+                    "intent": str(parsed.get("intent", "unknown")).lower(),
                     "reason": str(parsed.get("reason", "Пост может быть полезен для ручной проверки.")),
                     "summary": str(parsed.get("summary", "Краткое резюме не сформировано.")),
                     "angle": str(parsed.get("angle", "Можно аккуратно зайти с полезным уточнением или советом.")),
@@ -138,7 +142,7 @@ class AIService:
                 best_intent = intent
         geo_bonus = 1 if geo.lower() in text else 0
         score = min(0.95, 0.5 + hits * 0.12 + geo_bonus * 0.08)
-        reason = "Есть совпадения с темами по Таиланду, жилью, визам или релокации." if hits else "Пост сохранен для ручной проверки."
-        summary = "Пост связан с потенциальным вопросом по Таиланду." if hits else "Пост требует ручной оценки."
+        reason = "Есть совпадения с приоритетными темами источника." if hits else "Пост сохранен для ручной проверки."
+        summary = "Пост связан с потенциальным вопросом по выбранной тематике." if hits else "Пост требует ручной оценки."
         angle = "Можно зайти с практическим советом и уточняющим вопросом." if hits else "Лучше проверить вручную перед реакцией."
         return {"score": score, "intent": best_intent, "reason": reason, "summary": summary, "angle": angle}
