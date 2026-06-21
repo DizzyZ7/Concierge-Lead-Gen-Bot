@@ -5,10 +5,12 @@ from html import escape
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.keyboards.inline import saved_actions
 from db import queries
+from db.models import Lead
 
 router = Router(name=__name__)
 
@@ -30,6 +32,32 @@ RESULT_LABELS = {
 def cut(text: str | None, limit: int = 700) -> str:
     value = text or ""
     return value if len(value) <= limit else value[: limit - 1] + "..."
+
+
+async def mark_as_lead(session: AsyncSession, post_id: int) -> tuple[bool, int | None, bool]:
+    post = await queries.get_post_with_details(session, post_id)
+    if not post:
+        return False, None, False
+
+    existing = await session.scalar(select(Lead).where(Lead.source_post_id == post_id).limit(1))
+    if existing:
+        if post.status != "lead":
+            post.status = "lead"
+            await session.commit()
+        return True, existing.id, False
+
+    lead = Lead(
+        source_post_id=post.id,
+        geo=post.channel.geo if post.channel else None,
+        intent=post.intent,
+        notes=f"Lead Radar item #{post.id}. Fill contact details after direct response.",
+    )
+    session.add(lead)
+    post.status = "lead"
+    await session.flush()
+    await queries.increment_stat(session, "leads_received", 1)
+    await session.refresh(lead)
+    return True, lead.id, True
 
 
 async def send_content_ideas(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
@@ -60,11 +88,16 @@ async def result_callback(callback: CallbackQuery, session_factory: async_sessio
     if len(parts) != 3 or parts[1] not in RESULT_STATUS_MAP or not parts[2].isdigit():
         await callback.answer("Unknown result", show_alert=True)
         return
-    status = RESULT_STATUS_MAP[parts[1]]
+    result = parts[1]
     post_id = int(parts[2])
     async with session_factory() as session:
-        ok = await queries.mark_post_status(session, post_id, status)
-    await callback.answer(RESULT_LABELS[parts[1]] if ok else "Not found", show_alert=not ok)
+        if result == "lead":
+            ok, lead_id, created = await mark_as_lead(session, post_id)
+            label = f"Lead #{lead_id} created" if created else f"Lead #{lead_id} already exists"
+        else:
+            ok = await queries.mark_post_status(session, post_id, RESULT_STATUS_MAP[result])
+            label = RESULT_LABELS[result]
+    await callback.answer(label if ok else "Not found", show_alert=not ok)
 
 
 @router.message(Command("content_ideas"))
