@@ -22,6 +22,21 @@ def cut(text: str | None, limit: int = 700) -> str:
     return escape(text if len(text) <= limit else text[: limit - 1] + "...")
 
 
+def render_queue_item(item, label: str) -> str:
+    channel = item.channel.channel_username if item.channel else "unknown"
+    score = f"{item.relevance_score:.2f}" if item.relevance_score is not None else "-"
+    return (
+        f"{label} #{item.id}\n"
+        f"Channel: {escape(channel)}\n"
+        f"Score: {escape(score)}\n"
+        f"Intent: {escape(item.intent)}\n"
+        f"Reason: {escape(item.relevance_reason or '-')}\n"
+        f"Summary: {escape(item.content_summary or '-')}\n"
+        f"URL: {escape(item.post_url or '-')}\n\n"
+        f"Text:\n{cut(item.post_text)}"
+    )
+
+
 async def send_pending(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
     async with session_factory() as session:
         items = await queries.list_pending_posts(session, 10)
@@ -29,16 +44,21 @@ async def send_pending(message: Message, session_factory: async_sessionmaker[Asy
         await message.answer("No pending items.")
         return
     for item in items:
-        channel = item.channel.channel_username if item.channel else "unknown"
-        text = (
-            f"Pending #{item.id}\n"
-            f"Channel: {escape(channel)}\n"
-            f"Score: {item.relevance_score:.2f}\n"
-            f"Intent: {escape(item.intent)}\n"
-            f"URL: {escape(item.post_url or '-')}\n\n"
-            f"Text:\n{cut(item.post_text)}"
+        await message.answer(render_queue_item(item, "Pending"), reply_markup=pending_actions(item.id), disable_web_page_preview=True)
+
+
+async def send_limit_queue(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    async with session_factory() as session:
+        items = await queries.list_posts_by_status(session, "queued_by_limit", 20)
+    if not items:
+        await message.answer("Daily limit queue is empty.")
+        return
+    for item in items:
+        await message.answer(
+            render_queue_item(item, "Queued by daily limit"),
+            reply_markup=pending_actions(item.id),
+            disable_web_page_preview=True,
         )
-        await message.answer(text, reply_markup=pending_actions(item.id))
 
 
 @router.message(Command("pending"))
@@ -50,6 +70,17 @@ async def pending_command(message: Message, session_factory: async_sessionmaker[
 async def pending_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession]) -> None:
     await callback.answer()
     await send_pending(callback.message, session_factory)
+
+
+@router.message(Command("limit_queue"))
+async def limit_queue_command(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    await send_limit_queue(message, session_factory)
+
+
+@router.callback_query(F.data == "nav:limit_queue")
+async def limit_queue_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    await callback.answer()
+    await send_limit_queue(callback.message, session_factory)
 
 
 @router.message(Command("add_item"))
