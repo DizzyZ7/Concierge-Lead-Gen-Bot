@@ -6,31 +6,47 @@ from html import escape
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.orm import selectinload
 
 from db import queries
+from db.models import Lead
 
 router = Router(name=__name__)
 
 
 async def send_leads(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
     async with session_factory() as session:
-        leads = await queries.list_new_leads(session, 20)
+        result = await session.scalars(
+            select(Lead)
+            .options(selectinload(Lead.source_post))
+            .where(Lead.status == "new")
+            .order_by(Lead.created_at.desc())
+            .limit(20)
+        )
+        leads = result.all()
     if not leads:
         await message.answer("No new leads.")
         return
     for lead in leads:
         username = f"@{lead.tg_username}" if lead.tg_username else "-"
+        source_post = lead.source_post
+        source_text = f"#{source_post.id}" if source_post else "-"
+        source_url = source_post.post_url if source_post else None
         text = (
             f"Lead #{lead.id}\n"
+            f"Status: {escape(lead.status)}\n"
             f"User ID: {lead.tg_user_id or '-'}\n"
             f"Username: {escape(username)}\n"
             f"First name: {escape(lead.first_name or '-')}\n"
             f"Geo: {escape(lead.geo or '-')}\n"
             f"Intent: {escape(lead.intent or '-')}\n"
+            f"Source item: {escape(source_text)}\n"
+            f"Source URL: {escape(source_url or '-')}\n"
             f"Notes: {escape(lead.notes or '-')}"
         )
-        await message.answer(text)
+        await message.answer(text, disable_web_page_preview=True)
 
 
 @router.message(Command("leads"))
