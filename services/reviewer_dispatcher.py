@@ -6,6 +6,7 @@ from aiogram import Bot
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.keyboards.inline import reviewer_actions
+from bot.presentation import intent_label
 from core.config import Settings
 from core.logger import get_logger
 from db import queries
@@ -84,15 +85,15 @@ class ReviewerDispatcher:
         summary_text = trim(summary, 350) or "Краткое резюме не сформировано."
         angle_text = trim(angle, 350) or "Можно аккуратно зайти с полезным уточнением или советом."
         return (
-            f"Lead radar item #{post_id}\n"
-            f"Draft #{draft_id}\n"
-            f"Channel: {escape(channel)}\n"
-            f"Category: {escape(intent or 'unknown')}\n"
-            f"Score: {escape(score_text)}\n"
-            f"Why relevant: {escape(reason_text)}\n"
-            f"Summary: {escape(summary_text)}\n"
-            f"Angle: {escape(angle_text)}\n"
-            f"URL: {escape(url or '-')}\n\n"
-            f"Source:\n{escape(source)}\n\n"
-            f"Suggested comment:\n<code>{escape(draft)}</code>"
+            f"Лид-радар: пост #{post_id}\n"
+            f"Черновик #{draft_id}\n"
+            f"Канал: {escape(channel)}\n"
+            f"Категория: {escape(intent_label(intent))}\n"
+            f"Оценка: {escape(score_text)}\n"
+            f"Почему релевантно: {escape(reason_text)}\n"
+            f"Кратко: {escape(summary_text)}\n"
+            f"Как зайти в диалог: {escape(angle_text)}\n"
+            f"Ссылка: {escape(url or '-')}\n\n"
+            f"Текст источника:\n{escape(source)}\n\n"
+            f"Черновик комментария:\n<code>{escape(draft)}</code>"
         )
