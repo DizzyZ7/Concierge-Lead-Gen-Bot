@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from bot.handlers.all_handlers import build_router
 from bot.main import create_bot, create_dispatcher
+from bot.presentation import intent_label, status_label
 from core.config import Settings
 from db.models import Lead, ParsedPost, TargetChannel
 from services.ai import AIService
@@ -19,6 +20,8 @@ def main() -> None:
     assert is_stale(datetime.now(timezone.utc) - timedelta(hours=25), 24)
     assert not is_stale(datetime.now(timezone.utc) - timedelta(hours=23), 24)
     assert current_day_start_utc("Asia/Bangkok").tzinfo == timezone.utc
+    assert intent_label("realty") == "Недвижимость"
+    assert status_label("queued_by_limit") == "Отложено по дневному лимиту"
     assert normalize_text("HTTPS://t.me/test  Phuket!!!") == "phuket"
     assert len(text_hash("Thailand relocation")) == 64
     assert TargetChannel.__tablename__ == "target_channels"
