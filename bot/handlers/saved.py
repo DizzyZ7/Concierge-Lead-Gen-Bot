@@ -8,6 +8,7 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.keyboards.inline import saved_actions
+from bot.presentation import intent_label
 from db import queries
 
 router = Router(name=__name__)
@@ -22,21 +23,21 @@ async def send_saved_queue(message: Message, session_factory: async_sessionmaker
     async with session_factory() as session:
         posts = await queries.list_saved_posts(session, 20)
     if not posts:
-        await message.answer("Saved queue is empty.")
+        await message.answer("Сохраненных постов пока нет.")
         return
     for post in posts:
-        channel = post.channel.channel_username if post.channel else "unknown"
+        channel = post.channel.channel_username if post.channel else "неизвестно"
         score = f"{post.relevance_score:.2f}" if post.relevance_score is not None else "-"
         text = (
-            f"Saved #{post.id}\n"
-            f"Channel: {escape(channel)}\n"
-            f"Category: {escape(post.intent)}\n"
-            f"Score: {escape(score)}\n"
-            f"Reason: {escape(post.relevance_reason or '-')}\n"
-            f"Summary: {escape(post.content_summary or '-')}\n"
-            f"Angle: {escape(post.suggested_angle or '-')}\n"
-            f"URL: {escape(post.post_url or '-')}\n\n"
-            f"Text:\n{escape(cut(post.post_text))}"
+            f"Сохранено #{post.id}\n"
+            f"Канал: {escape(channel)}\n"
+            f"Категория: {escape(intent_label(post.intent))}\n"
+            f"Оценка: {escape(score)}\n"
+            f"Почему релевантно: {escape(post.relevance_reason or '-')}\n"
+            f"Кратко: {escape(post.content_summary or '-')}\n"
+            f"Как зайти в диалог: {escape(post.suggested_angle or '-')}\n"
+            f"Ссылка: {escape(post.post_url or '-')}\n\n"
+            f"Текст:\n{escape(cut(post.post_text))}"
         )
         await message.answer(text, reply_markup=saved_actions(post.id, post.post_url), disable_web_page_preview=True)
 
@@ -46,7 +47,7 @@ async def save_post_callback(callback: CallbackQuery, session_factory: async_ses
     post_id = int(callback.data.split(":")[-1])
     async with session_factory() as session:
         ok = await queries.mark_post_saved(session, post_id)
-    await callback.answer("Saved" if ok else "Not found", show_alert=not ok)
+    await callback.answer("Сохранено" if ok else "Пост не найден", show_alert=not ok)
 
 
 @router.message(Command("saved_queue"))
