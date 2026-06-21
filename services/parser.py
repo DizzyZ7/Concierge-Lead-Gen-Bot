@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from sqlalchemy import func, select
 from telethon import TelegramClient
 from telethon.errors import FloodWaitError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -10,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from core.config import Settings
 from core.logger import get_logger
 from db import queries
+from db.models import ParsedPost, ReviewDraft
 from services.ai import AIService
 from services.text_tools import text_hash
 
@@ -41,6 +44,24 @@ def is_stale(message_date: datetime | None, max_age_hours: int) -> bool:
     return datetime.now(timezone.utc) - published_at > timedelta(hours=max_age_hours)
 
 
+def current_day_start_utc(timezone_name: str) -> datetime:
+    try:
+        local_zone = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        local_zone = timezone.utc
+    local_now = datetime.now(local_zone)
+    return local_now.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+
+
+async def count_channel_drafts_since(session: AsyncSession, channel_id: int, window_start: datetime) -> int:
+    value = await session.scalar(
+        select(func.count(ReviewDraft.id))
+        .join(ReviewDraft.post)
+        .where(ParsedPost.channel_id == channel_id, ReviewDraft.created_at >= window_start)
+    )
+    return int(value or 0)
+
+
 class ParserService:
     """Read-only Telegram channel monitor that creates reviewer drafts for relevant posts."""
 
@@ -59,6 +80,7 @@ class ParserService:
 
     async def run_once(self) -> None:
         """Check active channels and route relevant posts to reviewer workflow."""
+        day_start = current_day_start_utc(self.settings.timezone)
         async with self.session_factory() as session:
             if await queries.is_paused(session):
                 return
@@ -76,6 +98,7 @@ class ParserService:
                     allowed_intents=channel.allowed_intents,
                     blocked_keywords=channel.blocked_keywords,
                     max_post_age_hours=getattr(self.settings, "parser_max_post_age_hours", 24),
+                    day_start=day_start,
                 )
 
     async def _scan_channel(
@@ -92,9 +115,10 @@ class ParserService:
         allowed_intents: str | None,
         blocked_keywords: str | None,
         max_post_age_hours: int,
+        day_start: datetime,
     ) -> None:
         allowed = split_csv(allowed_intents)
-        drafts_today = await queries.count_drafts_today(session, channel_id)
+        drafts_today = await count_channel_drafts_since(session, channel_id, day_start)
         limit = max(daily_draft_limit, 0)
         try:
             entity = await self.client.get_entity(username)
