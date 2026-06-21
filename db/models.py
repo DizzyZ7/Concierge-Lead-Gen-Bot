@@ -74,6 +74,7 @@ class ReviewDraft(Base):
 
 class Lead(Base):
     __tablename__ = "leads"
+    __table_args__ = (UniqueConstraint("source_post_id", name="uq_leads_source_post_id"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     tg_user_id: Mapped[int | None] = mapped_column(BigInteger)
