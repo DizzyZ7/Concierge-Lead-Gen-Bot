@@ -63,6 +63,7 @@ class ParserService:
                     geo=channel.geo,
                     delay_min=channel.review_delay_min,
                     delay_max=channel.review_delay_max,
+                    daily_draft_limit=channel.daily_draft_limit,
                     min_score=to_float(channel.min_score, self.settings.relevance_threshold),
                     allowed_intents=channel.allowed_intents,
                     blocked_keywords=channel.blocked_keywords,
@@ -77,11 +78,14 @@ class ParserService:
         geo: str,
         delay_min: int,
         delay_max: int,
+        daily_draft_limit: int,
         min_score: float,
         allowed_intents: str | None,
         blocked_keywords: str | None,
     ) -> None:
         allowed = split_csv(allowed_intents)
+        drafts_today = await queries.count_drafts_today(session, channel_id)
+        limit = max(daily_draft_limit, 0)
         try:
             entity = await self.client.get_entity(username)
             async for message in self.client.iter_messages(entity, limit=self.settings.parser_limit_per_channel):
@@ -107,7 +111,12 @@ class ParserService:
                 reason = str(score.get("reason", "Пост требует ручной проверки."))
                 summary = str(score.get("summary", "Краткое резюме не сформировано."))
                 angle = str(score.get("angle", "Можно аккуратно зайти с полезным уточнением или советом."))
-                status = "pending" if value < min_score else "approved"
+                if value < min_score:
+                    status = "pending"
+                elif drafts_today >= limit:
+                    status = "queued_by_limit"
+                else:
+                    status = "approved"
                 post_url = f"https://t.me/{username.lstrip('@')}/{message_id}"
                 post = await queries.create_post(
                     session,
@@ -117,7 +126,7 @@ class ParserService:
                     post_url=post_url,
                     score=value,
                     intent=intent,
-                    status="pending",
+                    status=status,
                     relevance_reason=reason,
                     content_summary=summary,
                     suggested_angle=angle,
@@ -133,6 +142,7 @@ class ParserService:
                         delay_min=delay_min,
                         delay_max=delay_max,
                     )
+                    drafts_today += 1
                     if source == "ai":
                         await queries.increment_stat(session, "ai_drafts", 1)
                     else:
@@ -144,8 +154,18 @@ class ParserService:
                         score=value,
                         intent=intent,
                         min_score=min_score,
+                        daily_draft_limit=limit,
                         delay_min=delay_min,
                         delay_max=delay_max,
+                    )
+                elif status == "queued_by_limit":
+                    log.info(
+                        "post_queued_by_daily_limit",
+                        channel=username,
+                        post_id=post.id,
+                        score=value,
+                        intent=intent,
+                        daily_draft_limit=limit,
                     )
                 else:
                     log.info(
