@@ -39,6 +39,7 @@ Items:
 /add_item <channel_id> <url_or_dash> <text>
 /pending
 /approved_queue
+/limit_queue
 /review_queue
 /saved_queue
 /content_ideas
@@ -81,6 +82,7 @@ async def render_queue_stats(session_factory: async_sessionmaker[AsyncSession]) 
     statuses = [
         "pending",
         "approved",
+        "queued_by_limit",
         "sent_to_reviewer",
         "saved",
         "content_idea",
