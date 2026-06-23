@@ -14,6 +14,7 @@ TransitionResult = Literal["updated", "already", "blocked", "missing"]
 FINAL_OUTCOME_STATUSES: Final[frozenset[str]] = frozenset(
     {"lead", "commented", "content_idea", "not_relevant", "skipped"}
 )
+LEAD_BLOCKED_STATUSES: Final[frozenset[str]] = frozenset({"not_relevant", "skipped"})
 APPROVABLE_STATUSES: Final[frozenset[str]] = frozenset(
     {"pending", "queued_by_limit", "saved", "processing_failed"}
 )
@@ -21,6 +22,10 @@ APPROVABLE_STATUSES: Final[frozenset[str]] = frozenset(
 
 def can_approve(status: str, has_draft: bool) -> bool:
     return status in APPROVABLE_STATUSES and not has_draft
+
+
+def can_mark_as_lead(status: str) -> bool:
+    return status not in LEAD_BLOCKED_STATUSES
 
 
 async def _current_status(session: AsyncSession, post_id: int) -> str | None:
