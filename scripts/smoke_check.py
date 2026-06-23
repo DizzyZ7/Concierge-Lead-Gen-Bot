@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from bot.handlers.all_handlers import build_router
 from bot.handlers.failed import router as failed_router
+from bot.handlers.leads import DEFAULT_FOLLOWUP_HOURS, format_activity
 from bot.main import create_bot, create_dispatcher
 from bot.presentation import intent_label, status_label
 from core.config import Settings
@@ -36,12 +37,15 @@ def main() -> None:
     assert not can_approve("approved", True)
     assert "lead" in FINAL_OUTCOME_STATUSES
     assert "pending" in APPROVABLE_STATUSES
+    assert DEFAULT_FOLLOWUP_HOURS == 48
+    assert "UTC" in format_activity(now - timedelta(hours=2))
     assert normalize_text("HTTPS://t.me/test  Phuket!!!") == "phuket"
     assert len(text_hash("Thailand relocation")) == 64
     assert TargetChannel.__tablename__ == "target_channels"
     assert hasattr(TargetChannel, "last_seen_message_id")
     assert ParsedPost.__tablename__ == "parsed_posts"
     assert Lead.__tablename__ == "leads"
+    assert hasattr(Lead, "updated_at")
     assert ParserService is not None
     assert AIService is not None
     assert RuntimeOps is not None
