@@ -13,6 +13,7 @@ from bot.keyboards.inline import saved_actions
 from bot.presentation import intent_label
 from db import queries
 from db.models import Lead
+from services.post_state import FINAL_OUTCOME_STATUSES, apply_result_once
 
 router = Router(name=__name__)
 
@@ -36,17 +37,30 @@ def cut(text: str | None, limit: int = 700) -> str:
     return value if len(value) <= limit else value[: limit - 1] + "..."
 
 
-async def mark_as_lead(session: AsyncSession, post_id: int) -> tuple[bool, int | None, bool]:
+def state_feedback(result: str, success: str) -> str:
+    if result == "updated":
+        return success
+    if result == "already":
+        return "Этот результат уже зафиксирован."
+    if result == "blocked":
+        return "Пост уже закрыт другим результатом."
+    return "Пост не найден."
+
+
+async def mark_as_lead(session: AsyncSession, post_id: int) -> tuple[str, int | None]:
     post = await queries.get_post_with_details(session, post_id)
     if not post:
-        return False, None, False
+        return "missing", None
 
     existing = await session.scalar(select(Lead).where(Lead.source_post_id == post_id).limit(1))
     if existing:
         if post.status != "lead":
             post.status = "lead"
             await session.commit()
-        return True, existing.id, False
+        return "already", existing.id
+
+    if post.status in FINAL_OUTCOME_STATUSES:
+        return "blocked", None
 
     lead = Lead(
         source_post_id=post.id,
@@ -61,11 +75,11 @@ async def mark_as_lead(session: AsyncSession, post_id: int) -> tuple[bool, int |
     except IntegrityError:
         await session.rollback()
         existing = await session.scalar(select(Lead).where(Lead.source_post_id == post_id).limit(1))
-        return bool(existing), existing.id if existing else None, False
+        return ("already", existing.id) if existing else ("missing", None)
 
     await queries.increment_stat(session, "leads_received", 1)
     await session.refresh(lead)
-    return True, lead.id, True
+    return "updated", lead.id
 
 
 async def send_content_ideas(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
@@ -100,16 +114,21 @@ async def result_callback(callback: CallbackQuery, session_factory: async_sessio
     post_id = int(parts[2])
     async with session_factory() as session:
         if result == "lead":
-            ok, lead_id, created = await mark_as_lead(session, post_id)
-            label = f"Создан лид #{lead_id}" if created else f"Лид #{lead_id} уже существует"
+            state, lead_id = await mark_as_lead(session, post_id)
+            if state == "updated":
+                label = f"Создан лид #{lead_id}"
+            elif state == "already":
+                label = f"Лид #{lead_id} уже существует"
+            else:
+                label = state_feedback(state, RESULT_LABELS[result])
         else:
-            ok = await queries.mark_post_status(session, post_id, RESULT_STATUS_MAP[result])
-            label = RESULT_LABELS[result]
-    await callback.answer(label if ok else "Пост не найден", show_alert=not ok)
+            state = await apply_result_once(session, post_id, RESULT_STATUS_MAP[result])
+            label = state_feedback(state, RESULT_LABELS[result])
+    await callback.answer(label, show_alert=state in {"blocked", "missing"})
 
 
 @router.message(Command("content_ideas"))
-async def content_ideas_command(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
+async def content_ideas_command(message: Message, session_factory: async_sessionmaker[Async_sessionmaker[AsyncSession]) -> None:
     await send_content_ideas(message, session_factory)
 
 
