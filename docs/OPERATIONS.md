@@ -19,11 +19,14 @@ When migrations are behind, the bot exits before Telegram polling and logs the e
 /daily_report
 /channel_stats
 /queue_stats
+/reviewer_backlog
 /failed_queue
 /followups
 ```
 
 `/health` must show live parser, reviewer, and daily-limit-queue heartbeats. A stale heartbeat or a recent error requires review before adding more sources.
+
+`/reviewer_backlog` shows cards that were already delivered to a reviewer but remain unresolved for more than 24 hours. It does not send reminders or change statuses automatically. Use `/reviewer_backlog 48` or another threshold when reviewing an older queue.
 
 ## First staging pass
 
@@ -117,7 +120,7 @@ After reset, run `/scan_now` to take a fresh bounded slice immediately. Existing
 
 1. Run `/health` and `/launch_check`.
 2. Run `/validate_channels` if source validation is missing, stale, or failed.
-3. Check `/failed_queue` and recent parser, reviewer, or limit-queue error text.
+3. Check `/reviewer_backlog`, `/failed_queue`, and recent parser, reviewer, or limit-queue error text.
 4. Inspect `docker compose logs --tail=200 bot`.
 5. Take a database backup before a code or migration rollback.
 6. Keep `OUTBOUND_ENABLED=false` until reviewer-first quality is stable.
