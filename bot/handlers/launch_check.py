@@ -23,8 +23,10 @@ async def render_launch_check(session_factory: async_sessionmaker[AsyncSession],
     paused = "unknown"
     active_channels = 0
     failed_items = 0
+    queued_by_limit = 0
     parser_runtime: dict[str, str | None] = {}
     reviewer_runtime: dict[str, str | None] = {}
+    limit_queue_runtime: dict[str, str | None] = {}
 
     try:
         async with session_factory() as session:
@@ -43,8 +45,15 @@ async def render_launch_check(session_factory: async_sessionmaker[AsyncSession],
                 )
                 or 0
             )
+            queued_by_limit = int(
+                await session.scalar(
+                    select(func.count(ParsedPost.id)).where(ParsedPost.status == "queued_by_limit")
+                )
+                or 0
+            )
             parser_runtime = await get_component_runtime_state(session, "parser")
             reviewer_runtime = await get_component_runtime_state(session, "reviewer")
+            limit_queue_runtime = await get_component_runtime_state(session, "limit_queue")
     except Exception as error:
         return f"❌ Launch check не прошел: база данных недоступна ({error.__class__.__name__})."
 
@@ -57,8 +66,10 @@ async def render_launch_check(session_factory: async_sessionmaker[AsyncSession],
 
     parser_heartbeat = parse_iso(parser_runtime.get("last_success_at"))
     reviewer_heartbeat = parse_iso(reviewer_runtime.get("last_success_at"))
+    limit_queue_heartbeat = parse_iso(limit_queue_runtime.get("last_success_at"))
     parser_heartbeat_text = parser_heartbeat.strftime("%d.%m %H:%M UTC") if parser_heartbeat else "еще нет"
     reviewer_heartbeat_text = reviewer_heartbeat.strftime("%d.%m %H:%M UTC") if reviewer_heartbeat else "еще нет"
+    limit_queue_heartbeat_text = limit_queue_heartbeat.strftime("%d.%m %H:%M UTC") if limit_queue_heartbeat else "еще нет"
 
     lines = [
         "✅ Можно запускать" if required_ok else "⚠️ Перед запуском нужно исправить пункты ниже",
@@ -69,10 +80,12 @@ async def render_launch_check(session_factory: async_sessionmaker[AsyncSession],
         f"{mark(channels_ok)} Активные каналы: {active_channels}",
         f"{mark(unpaused_ok)} Пауза: {'нет' if unpaused_ok else 'включена'}",
         f"{mark(failures_ok)} Ошибки обработки: {failed_items}",
+        f"ℹ️ Очередь сверх дневного лимита: {queued_by_limit}",
         f"{'✅' if settings.claude_ready else 'ℹ️'} Claude: {'готов' if settings.claude_ready else 'fallback-режим'}",
         "",
         f"Parser heartbeat: {parser_heartbeat_text}",
         f"Reviewer heartbeat: {reviewer_heartbeat_text}",
+        f"Лимитная очередь heartbeat: {limit_queue_heartbeat_text}",
     ]
     return "\n".join(lines)
 
