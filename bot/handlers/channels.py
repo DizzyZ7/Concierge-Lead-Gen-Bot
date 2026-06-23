@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.keyboards.inline import channel_actions
 from db import queries
+from services.channel_cursor import reset_channel_cursor
 
 router = Router(name=__name__)
 
@@ -25,20 +26,21 @@ async def send_channels(message: Message, session_factory: async_sessionmaker[As
     async with session_factory() as session:
         channels = await queries.list_channels(session)
     if not channels:
-        await message.answer("No channels yet. Use /add_channel @username thailand relocation")
+        await message.answer("Каналов пока нет. Используй: /add_channel @username thailand relocation")
         return
     for channel in channels:
         text = (
-            f"Channel #{channel.id}\n"
+            f"Канал #{channel.id}\n"
             f"Username: {escape(channel.channel_username)}\n"
-            f"Geo: {escape(channel.geo)}\n"
-            f"Category: {escape(channel.category or '-')}\n"
-            f"Active: {channel.is_active}\n"
-            f"Daily draft limit: {channel.daily_draft_limit}\n"
-            f"Reviewer delay: {channel.review_delay_min}-{channel.review_delay_max} min\n"
-            f"Min score: {channel.min_score if channel.min_score is not None else '-'}\n"
-            f"Allowed intents: {escape(channel.allowed_intents or '-')}\n"
-            f"Blocked keywords: {escape(channel.blocked_keywords or '-')}"
+            f"Гео: {escape(channel.geo)}\n"
+            f"Категория: {escape(channel.category or '-')}\n"
+            f"Мониторинг: {'включен' if channel.is_active else 'выключен'}\n"
+            f"Лимит черновиков в день: {channel.daily_draft_limit}\n"
+            f"Задержка для reviewer-а: {channel.review_delay_min}-{channel.review_delay_max} мин.\n"
+            f"Минимальная оценка: {channel.min_score if channel.min_score is not None else '-'}\n"
+            f"Разрешенные intent: {escape(channel.allowed_intents or '-')}\n"
+            f"Стоп-слова: {escape(channel.blocked_keywords or '-')}\n"
+            f"Последнее сообщение cursor: {channel.last_seen_message_id or '-'}"
         )
         await message.answer(text, reply_markup=channel_actions(channel.id))
 
@@ -60,7 +62,7 @@ async def add_channel_command(message: Message, session_factory: async_sessionma
         return
     parts = message.text.split(maxsplit=3)
     if len(parts) < 3:
-        await message.answer("Usage: /add_channel @username geo category")
+        await message.answer("Формат: /add_channel @username geo category")
         return
     username = parts[1]
     geo = parts[2]
@@ -70,9 +72,9 @@ async def add_channel_command(message: Message, session_factory: async_sessionma
             channel = await queries.add_channel(session, username, geo, category)
         except IntegrityError:
             await session.rollback()
-            await message.answer("Channel already exists.")
+            await message.answer("Такой канал уже добавлен.")
             return
-    await message.answer(f"Added channel #{channel.id}.")
+    await message.answer(f"Добавлен канал #{channel.id}.")
 
 
 @router.message(Command("set_channel_limit"))
@@ -81,11 +83,11 @@ async def set_channel_limit_command(message: Message, session_factory: async_ses
         return
     parts = message.text.split(maxsplit=2)
     if len(parts) != 3 or not parts[1].isdigit() or not parts[2].isdigit():
-        await message.answer("Usage: /set_channel_limit <channel_id> <limit>")
+        await message.answer("Формат: /set_channel_limit <channel_id> <limit>")
         return
     async with session_factory() as session:
         channel = await queries.set_channel_limit(session, int(parts[1]), int(parts[2]))
-    await message.answer("Updated." if channel else "Channel not found.")
+    await message.answer("Обновлено." if channel else "Канал не найден.")
 
 
 @router.message(Command("set_channel_delay"))
@@ -94,17 +96,17 @@ async def set_channel_delay_command(message: Message, session_factory: async_ses
         return
     parts = message.text.split(maxsplit=3)
     if len(parts) != 4 or not all(part.isdigit() for part in parts[1:]):
-        await message.answer("Usage: /set_channel_delay <channel_id> <min> <max>")
+        await message.answer("Формат: /set_channel_delay <channel_id> <min> <max>")
         return
     channel_id = int(parts[1])
     delay_min = int(parts[2])
     delay_max = int(parts[3])
     if delay_min > delay_max:
-        await message.answer("Min delay must be less than or equal to max delay.")
+        await message.answer("Минимальная задержка не может быть больше максимальной.")
         return
     async with session_factory() as session:
         channel = await queries.set_channel_delay(session, channel_id, delay_min, delay_max)
-    await message.answer("Updated." if channel else "Channel not found.")
+    await message.answer("Обновлено." if channel else "Канал не найден.")
 
 
 @router.message(Command("set_channel_min_score"))
@@ -113,21 +115,21 @@ async def set_channel_min_score_command(message: Message, session_factory: async
         return
     parts = message.text.split(maxsplit=2)
     if len(parts) != 3 or not parts[1].isdigit():
-        await message.answer("Usage: /set_channel_min_score <channel_id> <0.00-1.00|->")
+        await message.answer("Формат: /set_channel_min_score <channel_id> <0.00-1.00|->")
         return
     value = None
     if parts[2] != "-":
         try:
             value = float(parts[2].replace(",", "."))
         except ValueError:
-            await message.answer("Min score must be a number from 0.00 to 1.00, or - to reset.")
+            await message.answer("Минимальная оценка должна быть числом от 0.00 до 1.00 или - для сброса.")
             return
         if value < 0 or value > 1:
-            await message.answer("Min score must be from 0.00 to 1.00.")
+            await message.answer("Минимальная оценка должна быть от 0.00 до 1.00.")
             return
     async with session_factory() as session:
         channel = await queries.set_channel_min_score(session, int(parts[1]), value)
-    await message.answer("Updated." if channel else "Channel not found.")
+    await message.answer("Обновлено." if channel else "Канал не найден.")
 
 
 @router.message(Command("set_channel_intents"))
@@ -136,12 +138,12 @@ async def set_channel_intents_command(message: Message, session_factory: async_s
         return
     parts = message.text.split(maxsplit=2)
     if len(parts) != 3 or not parts[1].isdigit():
-        await message.answer("Usage: /set_channel_intents <channel_id> <intent1,intent2|->")
+        await message.answer("Формат: /set_channel_intents <channel_id> <intent1,intent2|->")
         return
     intents = clean_csv(parts[2])
     async with session_factory() as session:
         channel = await queries.set_channel_allowed_intents(session, int(parts[1]), intents)
-    await message.answer("Updated." if channel else "Channel not found.")
+    await message.answer("Обновлено." if channel else "Канал не найден.")
 
 
 @router.message(Command("set_channel_blocklist"))
@@ -150,12 +152,29 @@ async def set_channel_blocklist_command(message: Message, session_factory: async
         return
     parts = message.text.split(maxsplit=2)
     if len(parts) != 3 or not parts[1].isdigit():
-        await message.answer("Usage: /set_channel_blocklist <channel_id> <word1,word2|->")
+        await message.answer("Формат: /set_channel_blocklist <channel_id> <word1,word2|->")
         return
     blocked = clean_csv(parts[2])
     async with session_factory() as session:
         channel = await queries.set_channel_blocked_keywords(session, int(parts[1]), blocked)
-    await message.answer("Updated." if channel else "Channel not found.")
+    await message.answer("Обновлено." if channel else "Канал не найден.")
+
+
+@router.message(Command("reset_channel_cursor"))
+async def reset_channel_cursor_command(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    if not message.text:
+        return
+    parts = message.text.split(maxsplit=1)
+    if len(parts) != 2 or not parts[1].isdigit():
+        await message.answer("Формат: /reset_channel_cursor <channel_id>")
+        return
+    async with session_factory() as session:
+        ok = await reset_channel_cursor(session, int(parts[1]))
+    await message.answer(
+        "Cursor сброшен. На следующем проходе parser возьмет свежий стартовый срез сообщений."
+        if ok
+        else "Канал не найден."
+    )
 
 
 @router.callback_query(F.data.startswith("channel:toggle:"))
@@ -163,4 +182,4 @@ async def toggle_channel_callback(callback: CallbackQuery, session_factory: asyn
     channel_id = int(callback.data.split(":")[-1])
     async with session_factory() as session:
         channel = await queries.toggle_channel(session, channel_id)
-    await callback.answer("Updated" if channel else "Not found")
+    await callback.answer("Мониторинг обновлен" if channel else "Канал не найден")
