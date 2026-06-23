@@ -14,6 +14,7 @@ from core.logger import get_logger
 from db import queries
 from db.models import ParsedPost, ReviewDraft
 from services.ai import AIService
+from services.runtime_ops import RuntimeOps
 from services.text_tools import text_hash
 
 log = get_logger(__name__)
@@ -72,34 +73,46 @@ class ParserService:
         session_factory: async_sessionmaker[AsyncSession],
         ai_service: AIService,
         settings: Settings,
+        runtime_ops: RuntimeOps | None = None,
     ) -> None:
         self.client = client
         self.session_factory = session_factory
         self.ai_service = ai_service
         self.settings = settings
+        self.runtime_ops = runtime_ops
 
     async def run_once(self) -> None:
         """Check active channels and route relevant posts to reviewer workflow."""
-        day_start = current_day_start_utc(self.settings.timezone)
-        async with self.session_factory() as session:
-            if await queries.is_paused(session):
-                return
-            channels = await queries.list_active_channels(session)
-            for channel in channels:
-                await self._scan_channel(
-                    session,
-                    channel_id=channel.id,
-                    username=channel.channel_username,
-                    geo=channel.geo,
-                    delay_min=channel.review_delay_min,
-                    delay_max=channel.review_delay_max,
-                    daily_draft_limit=channel.daily_draft_limit,
-                    min_score=to_float(channel.min_score, self.settings.relevance_threshold),
-                    allowed_intents=channel.allowed_intents,
-                    blocked_keywords=channel.blocked_keywords,
-                    max_post_age_hours=getattr(self.settings, "parser_max_post_age_hours", 24),
-                    day_start=day_start,
-                )
+        try:
+            day_start = current_day_start_utc(self.settings.timezone)
+            async with self.session_factory() as session:
+                if await queries.is_paused(session):
+                    if self.runtime_ops:
+                        await self.runtime_ops.heartbeat("parser", "paused")
+                    return
+                channels = await queries.list_active_channels(session)
+                for channel in channels:
+                    await self._scan_channel(
+                        session,
+                        channel_id=channel.id,
+                        username=channel.channel_username,
+                        geo=channel.geo,
+                        delay_min=channel.review_delay_min,
+                        delay_max=channel.review_delay_max,
+                        daily_draft_limit=channel.daily_draft_limit,
+                        min_score=to_float(channel.min_score, self.settings.relevance_threshold),
+                        allowed_intents=channel.allowed_intents,
+                        blocked_keywords=channel.blocked_keywords,
+                        max_post_age_hours=getattr(self.settings, "parser_max_post_age_hours", 24),
+                        day_start=day_start,
+                    )
+            if self.runtime_ops:
+                await self.runtime_ops.heartbeat("parser", f"active_channels={len(channels)}")
+        except Exception as error:
+            if self.runtime_ops:
+                await self.runtime_ops.failure("parser", error, "Ошибка общего цикла мониторинга")
+            else:
+                log.warning("parser_run_failed", error=str(error))
 
     async def _scan_channel(
         self,
@@ -215,5 +228,9 @@ class ParserService:
                     )
         except FloodWaitError as error:
             log.warning("parser_flood_wait", channel=username, seconds=error.seconds)
+            if self.runtime_ops:
+                await self.runtime_ops.failure("parser", error, f"Flood wait в канале {username}: {error.seconds} сек.")
         except Exception as error:
             log.warning("parser_channel_failed", channel=username, error=str(error))
+            if self.runtime_ops:
+                await self.runtime_ops.failure("parser", error, f"Ошибка в канале {username}")
