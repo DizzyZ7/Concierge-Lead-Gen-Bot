@@ -31,6 +31,7 @@ HELP_TEXT = """Команды
 /settings
 /pause
 /resume
+/launch_check
 
 Каналы:
 /channels
@@ -64,7 +65,7 @@ HELP_TEXT = """Команды
 /add_lead <tg_user_id_or_0> <username_or_dash> <geo> <intent> <notes>
 /lead_status <lead_id> <new|contacted|converted|dead>
 /lead_note <lead_id> <text>
-/deal <lead_id> <amount>
+/deal <lead_id> <commission_amount>
 
 Шаблоны:
 /templates
@@ -177,6 +178,7 @@ async def health_command(
             paused = await queries.get_setting(session, "paused", "false")
             parser_runtime = await get_component_runtime_state(session, "parser")
             reviewer_runtime = await get_component_runtime_state(session, "reviewer")
+            limit_queue_runtime = await get_component_runtime_state(session, "limit_queue")
 
         parser_line, parser_stale = format_runtime_component(
             "Parser", parser_runtime, timedelta(minutes=max(settings.parser_interval_minutes * 3, 15)), zone
@@ -184,8 +186,15 @@ async def health_command(
         reviewer_line, reviewer_stale = format_runtime_component(
             "Reviewer", reviewer_runtime, timedelta(minutes=5), zone
         )
+        limit_queue_line, limit_queue_stale = format_runtime_component(
+            "Лимитная очередь", limit_queue_runtime, timedelta(minutes=15), zone
+        )
         parser_required = settings.parser_enabled
-        overall = "⚠️ Нужна проверка" if reviewer_stale or (parser_required and parser_stale) else "✅ Система работает"
+        overall = (
+            "⚠️ Нужна проверка"
+            if reviewer_stale or limit_queue_stale or (parser_required and parser_stale)
+            else "✅ Система работает"
+        )
         lines = [
             overall,
             "",
@@ -199,6 +208,7 @@ async def health_command(
             "",
             parser_line,
             reviewer_line,
+            limit_queue_line,
         ]
         await message.answer("\n".join(lines))
     except Exception as error:
