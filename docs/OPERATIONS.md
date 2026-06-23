@@ -8,9 +8,46 @@
 /channel_stats
 /queue_stats
 /failed_queue
+/followups
 ```
 
-`/health` must show live parser and reviewer heartbeats. A stale heartbeat or a recent error requires review before adding more sources.
+`/health` must show live parser, reviewer, and daily-limit-queue heartbeats. A stale heartbeat or a recent error requires review before adding more sources.
+
+## First staging pass
+
+After the stack starts, use this order:
+
+```text
+/launch_check
+/business_context
+/set_business_context <фактическое описание услуг>
+/channels
+/scan_now
+/pending
+/approved_queue
+/review_queue
+```
+
+`/scan_now` runs the parser immediately. It is useful after adding a channel or resetting its cursor, and it uses the same lock as the scheduler to avoid duplicate processing.
+
+`/promote_limit_queue` immediately checks whether posts held by daily caps can be moved to reviewer flow. It never bypasses the per-channel daily limit.
+
+## Business context
+
+Set a compact factual profile through:
+
+```text
+/set_business_context <описание услуг>
+```
+
+Include what can genuinely be offered, relevant Thailand locations, intended audience, and claims that must not be made. The context guides AI relevance scoring and draft wording, but does not enable external auto-posting.
+
+Read or clear it with:
+
+```text
+/business_context
+/set_business_context -
+```
 
 ## Error alerts
 
@@ -42,12 +79,12 @@ Reset only when needed:
 /reset_channel_cursor <channel_id>
 ```
 
-After reset, the next parser run will take a fresh bounded slice. Existing posts remain protected by message and text duplicate checks.
+After reset, run `/scan_now` to take a fresh bounded slice immediately. Existing posts remain protected by message and text duplicate checks.
 
 ## Escalation order
 
-1. Run `/health`.
-2. Check `/failed_queue` and recent parser/reviewer error text.
+1. Run `/health` and `/launch_check`.
+2. Check `/failed_queue` and recent parser, reviewer, or limit-queue error text.
 3. Inspect `docker compose logs --tail=200 bot`.
 4. Take a database backup before a code or migration rollback.
 5. Keep `OUTBOUND_ENABLED=false` until reviewer-first quality is stable.
