@@ -188,6 +188,7 @@ async def health_command(
             parser_runtime = await get_component_runtime_state(session, "parser")
             reviewer_runtime = await get_component_runtime_state(session, "reviewer")
             limit_queue_runtime = await get_component_runtime_state(session, "limit_queue")
+            source_validation_runtime = await get_component_runtime_state(session, "source_validation")
 
         parser_line, parser_stale = format_runtime_component(
             "Parser", parser_runtime, timedelta(minutes=max(settings.parser_interval_minutes * 3, 15)), zone
@@ -198,10 +199,15 @@ async def health_command(
         limit_queue_line, limit_queue_stale = format_runtime_component(
             "Лимитная очередь", limit_queue_runtime, timedelta(minutes=15), zone
         )
+        source_validation_line, source_validation_stale = format_runtime_component(
+            "Проверка источников", source_validation_runtime, timedelta(hours=48), zone
+        )
         parser_required = settings.parser_enabled
         overall = (
             "⚠️ Нужна проверка"
-            if reviewer_stale or limit_queue_stale or (parser_required and parser_stale)
+            if reviewer_stale
+            or limit_queue_stale
+            or (parser_required and (parser_stale or source_validation_stale))
             else "✅ Система работает"
         )
         lines = [
@@ -218,6 +224,7 @@ async def health_command(
             parser_line,
             reviewer_line,
             limit_queue_line,
+            source_validation_line,
         ]
         await message.answer("\n".join(lines))
     except Exception as error:
