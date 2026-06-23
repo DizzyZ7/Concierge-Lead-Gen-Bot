@@ -11,6 +11,7 @@ from core.logger import get_logger, setup_logging
 from core.scheduler import create_scheduler
 from db.session import create_engine, create_session_factory
 from services.ai import AIService
+from services.limit_queue_promoter import LimitQueuePromoter
 from services.parser import ParserService
 from services.reviewer_dispatcher import ReviewerDispatcher
 from services.runtime_ops import RuntimeOps
@@ -54,13 +55,38 @@ async def main() -> None:
         settings=settings,
         runtime_ops=runtime_ops,
     )
+    limit_queue_promoter = LimitQueuePromoter(
+        session_factory=session_factory,
+        ai_service=ai_service,
+        settings=settings,
+        runtime_ops=runtime_ops,
+    )
     telegram_client, parser = await build_parser(settings, session_factory, ai_service, runtime_ops)
+    source_workflow_lock = asyncio.Lock()
+
+    async def run_limit_queue_promoter() -> None:
+        async with source_workflow_lock:
+            await limit_queue_promoter.run_once()
+
+    async def run_parser() -> None:
+        if not parser:
+            return
+        async with source_workflow_lock:
+            await parser.run_once()
 
     scheduler = create_scheduler(settings)
     scheduler.add_job(reviewer.run_once, "interval", minutes=1, id="reviewer_dispatcher", max_instances=1, coalesce=True)
+    scheduler.add_job(
+        run_limit_queue_promoter,
+        "interval",
+        minutes=5,
+        id="limit_queue_promoter",
+        max_instances=1,
+        coalesce=True,
+    )
     if parser:
         scheduler.add_job(
-            parser.run_once,
+            run_parser,
             "interval",
             minutes=settings.parser_interval_minutes,
             id="read_only_parser",
