@@ -47,8 +47,14 @@ class AIService:
         self.settings = settings
         self.client = AsyncAnthropic(api_key=settings.anthropic_api_key) if settings.claude_ready else None
 
-    async def score_post(self, post_text: str, geo: str) -> dict[str, Any]:
+    async def score_post(
+        self,
+        post_text: str,
+        geo: str,
+        db_session: AsyncSession | None = None,
+    ) -> dict[str, Any]:
         """Score source text relevance for the concierge workflow."""
+        business_context = await self._business_context(db_session)
         if self.client:
             try:
                 prompt = (
@@ -56,10 +62,11 @@ class AIService:
                     "score must be 0..1. "
                     "intent must be exactly one of: relocation, realty, visa, tourism, investment, business, finance, expat_life, unknown. "
                     "Relevant topics: Thailand relocation, housing, visa, real estate, tourism, investment, business, finance, expat life. "
+                    "Use business context only to judge whether the post is a genuine fit; never invent services or promises not present in it. "
                     "reason: one short Russian sentence explaining why this item matters. "
                     "summary: one short Russian sentence summarizing the source item. "
                     "angle: one short Russian sentence suggesting how a human reviewer can enter the conversation naturally. "
-                    f"Geo: {geo}. Text: {post_text[:3500]}"
+                    f"Geo: {geo}. {self._business_context_prompt(business_context)} Text: {post_text[:3500]}"
                 )
                 raw = await self._claude(prompt, 320, temperature=0.35)
                 parsed = self._parse_json(raw)
@@ -76,6 +83,7 @@ class AIService:
 
     async def generate_draft(self, post_text: str, geo: str, intent: str, db_session: AsyncSession) -> tuple[str, str]:
         """Generate a short draft for a human reviewer."""
+        business_context = await self._business_context(db_session)
         if self.client:
             try:
                 style = random.choice(COMMENT_STYLES)
@@ -84,8 +92,10 @@ class AIService:
                     "The reviewer will decide manually whether to send it. "
                     "Do not sound like an advertisement, a bot, or a sales script. "
                     "Do not repeat the same structure every time. "
+                    "Do not claim services, prices, guarantees, or expertise that business context does not explicitly support. "
                     "Max 3 short sentences. "
-                    f"Style: {style}. Geo: {geo}. Intent: {intent}. Text: {post_text[:3500]}"
+                    f"Style: {style}. Geo: {geo}. Intent: {intent}. "
+                    f"{self._business_context_prompt(business_context)} Text: {post_text[:3500]}"
                 )
                 text = (await self._claude(prompt, 300, temperature=0.65)).strip().strip('"')
                 if len(text) >= 10:
@@ -97,6 +107,18 @@ class AIService:
         if template:
             return template.template_text, "template"
         return DRAFTS.get(geo, DRAFTS["default"]), "hardcoded"
+
+    async def _business_context(self, db_session: AsyncSession | None) -> str:
+        if db_session is None:
+            return ""
+        value = await queries.get_setting(db_session, "business_context", "")
+        return " ".join((value or "").split())[:2500]
+
+    @staticmethod
+    def _business_context_prompt(value: str) -> str:
+        if not value:
+            return "Business context: not configured. Keep the response useful and do not assume a specific offer."
+        return f"Business context: {value}"
 
     async def _claude(self, user_prompt: str, max_tokens: int, temperature: float = 0.4) -> str:
         if not self.client:
