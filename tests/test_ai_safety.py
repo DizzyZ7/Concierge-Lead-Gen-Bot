@@ -23,6 +23,17 @@ class AISafetyTests(unittest.TestCase):
         self.assertIn("not configured", prompt)
         self.assertIn("do not assume", prompt)
 
+    def test_thailand_geo_aliases_cover_common_locations(self) -> None:
+        self.assertTrue(AIService._geo_matches("ищу аренду на пхукете", "thailand"))
+        self.assertTrue(AIService._geo_matches("кто живет в паттайе", "Thailand"))
+        self.assertTrue(AIService._geo_matches("районы самуи", "samui"))
+        self.assertFalse(AIService._geo_matches("ищу жилье в дубае", "thailand"))
+
+    def test_fallback_score_adds_geo_bonus_for_phuket(self) -> None:
+        thailand_score = AIService._fallback_score("Пхукет: ищу район для жизни", "thailand")["score"]
+        neutral_score = AIService._fallback_score("Ищу район для жизни", "thailand")["score"]
+        self.assertGreater(thailand_score, neutral_score)
+
 
 if __name__ == "__main__":
     unittest.main()
