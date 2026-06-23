@@ -12,6 +12,7 @@ from services.ai import AIService
 from services.channel_cursor import advance_channel_cursor, iter_unseen_messages, reset_channel_cursor
 from services.failed_items import mark_processing_failed
 from services.parser import ParserService, current_day_start_utc, has_blocked_keyword, is_stale, split_csv, to_float
+from services.post_state import APPROVABLE_STATUSES, FINAL_OUTCOME_STATUSES, apply_result_once, can_approve, mark_reviewer_done_once, skip_post_once
 from services.runtime_ops import RuntimeOps, parse_iso, runtime_key
 from services.text_tools import normalize_text, text_hash
 
@@ -30,6 +31,11 @@ def main() -> None:
     assert intent_label("realty") == "Недвижимость"
     assert status_label("queued_by_limit") == "Отложено по дневному лимиту"
     assert status_label("processing_failed") == "Ошибка обработки"
+    assert can_approve("pending", False)
+    assert can_approve("queued_by_limit", False)
+    assert not can_approve("approved", True)
+    assert "lead" in FINAL_OUTCOME_STATUSES
+    assert "pending" in APPROVABLE_STATUSES
     assert normalize_text("HTTPS://t.me/test  Phuket!!!") == "phuket"
     assert len(text_hash("Thailand relocation")) == 64
     assert TargetChannel.__tablename__ == "target_channels"
@@ -43,6 +49,9 @@ def main() -> None:
     assert advance_channel_cursor is not None
     assert reset_channel_cursor is not None
     assert iter_unseen_messages is not None
+    assert apply_result_once is not None
+    assert mark_reviewer_done_once is not None
+    assert skip_post_once is not None
     assert failed_router is not None
     assert Settings is not None
     assert create_bot is not None
