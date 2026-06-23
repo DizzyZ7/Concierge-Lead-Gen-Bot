@@ -40,6 +40,7 @@ HELP_TEXT = """Команды
 /set_channel_min_score 1 0.70
 /set_channel_intents 1 realty,visa,relocation
 /set_channel_blocklist 1 crypto,casino
+/reset_channel_cursor <channel_id>
 
 Посты:
 /add_item <channel_id> <url_or_dash> <text>
@@ -56,9 +57,13 @@ HELP_TEXT = """Команды
 /edit_draft <post_id> <new text>
 
 Лиды:
-/leads
+/leads [new|contacted|converted|dead|all]
+/lead <lead_id>
+/funnel
+/followups [hours]
 /add_lead <tg_user_id_or_0> <username_or_dash> <geo> <intent> <notes>
 /lead_status <lead_id> <new|contacted|converted|dead>
+/lead_note <lead_id> <text>
 /deal <lead_id> <amount>
 
 Шаблоны:
