@@ -148,26 +148,32 @@ class LimitQueuePromoter:
                     remaining_capacity=capacity - promoted,
                 )
             except Exception as error:
+                failed_post_id = post.id
+                failed_message_id = post.tg_message_id
+                failed_text = post.post_text or ""
+                failed_url = post.post_url
+                failed_hash = post.text_hash
                 log.warning(
                     "limit_queue_promotion_failed",
                     channel=channel.channel_username,
-                    post_id=post.id,
+                    post_id=failed_post_id,
                     error=str(error),
                 )
                 await mark_processing_failed(
                     session,
                     channel_id=channel.id,
-                    tg_message_id=post.tg_message_id,
-                    post_text=post.post_text or "",
-                    post_url=post.post_url,
-                    text_hash=post.text_hash,
+                    tg_message_id=failed_message_id,
+                    post_text=failed_text,
+                    post_url=failed_url,
+                    text_hash=failed_hash,
                     error=error,
                 )
                 if self.runtime_ops:
                     await self.runtime_ops.failure(
                         "limit_queue",
                         error,
-                        f"Не удалось продвинуть пост #{post.id} из {channel.channel_username}",
+                        f"Не удалось продвинуть пост #{failed_post_id} из {channel.channel_username}",
                     )
+                return promoted, max(0, queue_size - promoted - 1)
 
         return promoted, max(0, queue_size - promoted)
