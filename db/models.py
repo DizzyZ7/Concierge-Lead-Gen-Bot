@@ -27,6 +27,7 @@ class TargetChannel(Base):
     min_score: Mapped[float | None] = mapped_column(Numeric(4, 2))
     allowed_intents: Mapped[str | None] = mapped_column(Text)
     blocked_keywords: Mapped[str | None] = mapped_column(Text)
+    last_seen_message_id: Mapped[int | None] = mapped_column(BigInteger)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     posts: Mapped[list["ParsedPost"]] = relationship(back_populates="channel", cascade="all, delete-orphan")
