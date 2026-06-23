@@ -148,6 +148,6 @@ async def daily_report_callback(callback: CallbackQuery, session_factory: async_
 
 
 @router.callback_query(F.data == "nav:channel_stats")
-async def channel_stats_callback(callback: CallbackQuery, session_factory: async_sessionmaker[Async_sessionmaker[AsyncSession]) -> None:
+async def channel_stats_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession]) -> None:
     await callback.answer()
     await callback.message.answer(await render_channel_stats(session_factory))
