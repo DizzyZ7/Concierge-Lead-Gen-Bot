@@ -14,6 +14,7 @@ def main_menu() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Очередь reviewer-а", callback_data="nav:review_queue")],
             [InlineKeyboardButton(text="Сохраненные", callback_data="nav:saved_queue")],
             [InlineKeyboardButton(text="Идеи", callback_data="nav:content_ideas")],
+            [InlineKeyboardButton(text="Ошибки обработки", callback_data="nav:failed_queue")],
             [InlineKeyboardButton(text="Каналы", callback_data="nav:channels")],
             [InlineKeyboardButton(text="Лиды", callback_data="nav:leads")],
             [InlineKeyboardButton(text="Шаблоны", callback_data="nav:templates")],
@@ -46,6 +47,17 @@ def pending_actions(post_id: int) -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Пропустить", callback_data=f"post:skip:{post_id}")],
         ]
     )
+
+
+def failed_actions(post_id: int, url: str | None) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(text="Повторить обработку", callback_data=f"failed:retry:{post_id}")],
+        [InlineKeyboardButton(text="Показать источник", callback_data=f"post:source:{post_id}")],
+        [InlineKeyboardButton(text="Пропустить", callback_data=f"post:skip:{post_id}")],
+    ]
+    if url:
+        rows.append([InlineKeyboardButton(text="Открыть источник", url=url)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def approved_actions(post_id: int, url: str | None) -> InlineKeyboardMarkup:
