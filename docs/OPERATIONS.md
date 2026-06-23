@@ -22,15 +22,35 @@ After the stack starts, use this order:
 /business_context
 /set_business_context <фактическое описание услуг>
 /channels
+/validate_channels
 /scan_now
 /pending
 /approved_queue
 /review_queue
 ```
 
+`/validate_channels` checks each configured source through the current Telegram user session. It stores the time of the check and an error message when a channel cannot be reached. A source validation is treated as fresh for seven days; `/launch_check` requires every active channel to be fresh.
+
 `/scan_now` runs the parser immediately. It is useful after adding a channel or resetting its cursor, and it uses the same lock as the scheduler to avoid duplicate processing.
 
 `/promote_limit_queue` immediately checks whether posts held by daily caps can be moved to reviewer flow. It never bypasses the per-channel daily limit.
+
+## Weekly source review
+
+After at least several days of real reviewer decisions, run:
+
+```text
+/source_quality 7
+```
+
+The report separates actual lead/comment outcomes from noise and open backlog. It only recommends a manual action; it does not disable channels or change limits itself.
+
+Use the recommendation as a starting point:
+
+- noisy source — raise `min_score` or add `blocked_keywords`;
+- high open backlog — check reviewer workload and the channel daily limit;
+- strong source — keep it active and consider expanding its daily limit;
+- too little data — keep monitoring before changing filters.
 
 ## Business context
 
@@ -84,7 +104,8 @@ After reset, run `/scan_now` to take a fresh bounded slice immediately. Existing
 ## Escalation order
 
 1. Run `/health` and `/launch_check`.
-2. Check `/failed_queue` and recent parser, reviewer, or limit-queue error text.
-3. Inspect `docker compose logs --tail=200 bot`.
-4. Take a database backup before a code or migration rollback.
-5. Keep `OUTBOUND_ENABLED=false` until reviewer-first quality is stable.
+2. Run `/validate_channels` if source validation is missing, stale, or failed.
+3. Check `/failed_queue` and recent parser, reviewer, or limit-queue error text.
+4. Inspect `docker compose logs --tail=200 bot`.
+5. Take a database backup before a code or migration rollback.
+6. Keep `OUTBOUND_ENABLED=false` until reviewer-first quality is stable.
