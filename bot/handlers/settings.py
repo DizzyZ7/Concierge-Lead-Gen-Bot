@@ -20,13 +20,12 @@ def normalize_context(value: str) -> str:
 async def send_settings(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
     async with session_factory() as session:
         paused = await queries.get_setting(session, "paused", "false")
-        auto = await queries.get_setting(session, "auto_approve", "false")
         business_context = await queries.get_setting(session, BUSINESS_CONTEXT_KEY, "")
     await message.answer(
         "Настройки\n\n"
         f"Пауза: {'да' if paused == 'true' else 'нет'}\n"
-        f"Автоодобрение: {'включено' if auto == 'true' else 'выключено'}\n"
-        "Reviewer-first: включен\n"
+        "Режим: reviewer-first\n"
+        "Внешние действия: только вручную\n"
         f"Business context: {'настроен' if business_context else 'не задан'}"
     )
 
@@ -57,16 +56,11 @@ async def resume_command(message: Message, session_factory: async_sessionmaker[A
 
 
 @router.message(Command("autoapprove"))
-async def autoapprove_command(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
-    if not message.text:
-        return
-    parts = message.text.split(maxsplit=1)
-    if len(parts) != 2 or parts[1] not in {"on", "off"}:
-        await message.answer("Формат: /autoapprove on|off")
-        return
-    async with session_factory() as session:
-        await queries.set_setting(session, "auto_approve", "true" if parts[1] == "on" else "false")
-    await message.answer("Настройка обновлена.")
+async def autoapprove_command(message: Message) -> None:
+    await message.answer(
+        "Автоодобрение не используется в reviewer-first режиме. "
+        "Бот может подготовить карточку и черновик, но решение о внешнем действии остается за человеком."
+    )
 
 
 @router.message(Command("business_context"))
