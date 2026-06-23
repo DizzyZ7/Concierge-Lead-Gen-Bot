@@ -20,6 +20,15 @@ async def advance_channel_cursor(session: AsyncSession, channel_id: int, message
     await session.commit()
 
 
+async def reset_channel_cursor(session: AsyncSession, channel_id: int) -> bool:
+    channel = await session.get(TargetChannel, channel_id)
+    if not channel:
+        return False
+    channel.last_seen_message_id = None
+    await session.commit()
+    return True
+
+
 async def iter_unseen_messages(
     client: TelegramClient,
     entity: Any,
