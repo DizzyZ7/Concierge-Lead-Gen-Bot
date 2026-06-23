@@ -211,6 +211,6 @@ async def queue_stats_command(message: Message, session_factory: async_sessionma
 
 
 @router.callback_query(F.data == "nav:dashboard")
-async def dashboard_callback(callback: CallbackQuery, session_factory: async_sessionmaker[Async_sessionmaker[AsyncSession]) -> None:
+async def dashboard_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession]) -> None:
     await callback.answer()
     await callback.message.answer(await render_dashboard(session_factory), reply_markup=main_menu())
