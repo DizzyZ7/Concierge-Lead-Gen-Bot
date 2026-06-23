@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import queries
+from db.models import ParsedPost
 
 
 async def mark_processing_failed(
@@ -16,16 +18,18 @@ async def mark_processing_failed(
     error: Exception,
 ) -> None:
     reason = f"Ошибка обработки: {error.__class__.__name__}"[:400]
-    existing = await queries.get_post_with_details(session, tg_message_id)
-    if existing and existing.channel_id == channel_id:
+    existing = await session.scalar(
+        select(ParsedPost).where(
+            ParsedPost.channel_id == channel_id,
+            ParsedPost.tg_message_id == tg_message_id,
+        )
+    )
+    if existing:
         existing.status = "processing_failed"
         existing.relevance_reason = reason
         existing.content_summary = "Пост не обработан автоматически и требует повторного запуска."
         existing.suggested_angle = None
         await session.commit()
-        return
-
-    if await queries.post_exists(session, channel_id, tg_message_id):
         return
 
     await queries.create_post(
