@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
@@ -88,8 +88,22 @@ class LimitQueuePromoter:
         channel: TargetChannel,
         day_start: datetime,
     ) -> tuple[int, int]:
+        queue_size = int(
+            await session.scalar(
+                select(func.count(ParsedPost.id)).where(
+                    ParsedPost.channel_id == channel.id,
+                    ParsedPost.status == "queued_by_limit",
+                )
+            )
+            or 0
+        )
+        if queue_size == 0:
+            return 0, 0
+
         drafts_today = await count_channel_drafts_since(session, channel.id, day_start)
         capacity = available_daily_capacity(channel.daily_draft_limit, drafts_today)
+        if capacity == 0:
+            return 0, queue_size
 
         queued_posts = await session.scalars(
             select(ParsedPost)
@@ -99,8 +113,6 @@ class LimitQueuePromoter:
             .limit(promotion_fetch_limit(capacity))
         )
         posts = list(queued_posts.all())
-        if not posts or capacity == 0:
-            return 0, len(posts)
 
         promoted = 0
         for post in posts[:capacity]:
@@ -158,5 +170,4 @@ class LimitQueuePromoter:
                         f"Не удалось продвинуть пост #{post.id} из {channel.channel_username}",
                     )
 
-        remaining = max(0, len(posts) - promoted)
-        return promoted, remaining
+        return promoted, max(0, queue_size - promoted)
