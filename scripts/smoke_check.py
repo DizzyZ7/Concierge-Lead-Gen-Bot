@@ -9,7 +9,7 @@ from bot.presentation import intent_label, status_label
 from core.config import Settings
 from db.models import Lead, ParsedPost, TargetChannel
 from services.ai import AIService
-from services.channel_cursor import advance_channel_cursor, iter_unseen_messages
+from services.channel_cursor import advance_channel_cursor, iter_unseen_messages, reset_channel_cursor
 from services.failed_items import mark_processing_failed
 from services.parser import ParserService, current_day_start_utc, has_blocked_keyword, is_stale, split_csv, to_float
 from services.runtime_ops import RuntimeOps, parse_iso, runtime_key
@@ -41,6 +41,7 @@ def main() -> None:
     assert RuntimeOps is not None
     assert mark_processing_failed is not None
     assert advance_channel_cursor is not None
+    assert reset_channel_cursor is not None
     assert iter_unseen_messages is not None
     assert failed_router is not None
     assert Settings is not None
