@@ -13,7 +13,7 @@ from bot.keyboards.inline import saved_actions
 from bot.presentation import intent_label
 from db import queries
 from db.models import Lead
-from services.post_state import FINAL_OUTCOME_STATUSES, apply_result_once
+from services.post_state import apply_result_once, can_mark_as_lead
 
 router = Router(name=__name__)
 
@@ -59,7 +59,7 @@ async def mark_as_lead(session: AsyncSession, post_id: int) -> tuple[str, int | 
             await session.commit()
         return "already", existing.id
 
-    if post.status in FINAL_OUTCOME_STATUSES:
+    if not can_mark_as_lead(post.status):
         return "blocked", None
 
     lead = Lead(
