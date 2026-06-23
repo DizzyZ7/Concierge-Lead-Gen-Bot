@@ -11,6 +11,24 @@ permissions:
 jobs:
   quality-gates:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: concierge
+          POSTGRES_USER: concierge
+          POSTGRES_PASSWORD: concierge
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U concierge -d concierge"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      BOT_TOKEN: test-token
+      ADMIN_IDS: "1"
+      DATABASE_URL: postgresql+asyncpg://concierge:concierge@localhost:5432/concierge
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,6 +43,9 @@ jobs:
 
       - name: Compile Python modules
         run: python -m compileall -q .
+
+      - name: Apply migrations to clean PostgreSQL
+        run: alembic upgrade head && alembic current
 
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
