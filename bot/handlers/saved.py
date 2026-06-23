@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from bot.keyboards.inline import saved_actions
 from bot.presentation import intent_label
 from db import queries
+from services.post_state import save_post_once
 
 router = Router(name=__name__)
 
@@ -17,6 +18,16 @@ router = Router(name=__name__)
 def cut(text: str | None, limit: int = 700) -> str:
     value = text or ""
     return value if len(value) <= limit else value[: limit - 1] + "..."
+
+
+def save_feedback(result: str) -> str:
+    if result == "updated":
+        return "Сохранено"
+    if result == "already":
+        return "Этот пост уже сохранен"
+    if result == "blocked":
+        return "Пост уже закрыт другим результатом"
+    return "Пост не найден"
 
 
 async def send_saved_queue(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
@@ -46,8 +57,8 @@ async def send_saved_queue(message: Message, session_factory: async_sessionmaker
 async def save_post_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession]) -> None:
     post_id = int(callback.data.split(":")[-1])
     async with session_factory() as session:
-        ok = await queries.mark_post_saved(session, post_id)
-    await callback.answer("Сохранено" if ok else "Пост не найден", show_alert=not ok)
+        result = await save_post_once(session, post_id)
+    await callback.answer(save_feedback(result), show_alert=result in {"blocked", "missing"})
 
 
 @router.message(Command("saved_queue"))
