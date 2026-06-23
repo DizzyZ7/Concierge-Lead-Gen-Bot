@@ -128,7 +128,7 @@ async def result_callback(callback: CallbackQuery, session_factory: async_sessio
 
 
 @router.message(Command("content_ideas"))
-async def content_ideas_command(message: Message, session_factory: async_sessionmaker[Async_sessionmaker[AsyncSession]) -> None:
+async def content_ideas_command(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
     await send_content_ideas(message, session_factory)
 
 
