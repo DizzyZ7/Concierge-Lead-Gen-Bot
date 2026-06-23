@@ -10,6 +10,7 @@ from bot.main import create_bot, create_dispatcher
 from core.config import get_settings
 from core.logger import get_logger, setup_logging
 from core.scheduler import create_scheduler
+from db.migration_guard import SchemaNotReadyError, ensure_schema_current
 from db.session import create_engine, create_session_factory
 from services.ai import AIService
 from services.limit_queue_promoter import LimitQueuePromoter
@@ -46,6 +47,13 @@ async def main() -> None:
     settings = get_settings()
     engine = create_engine(settings.database_url)
     session_factory = create_session_factory(engine)
+    try:
+        await ensure_schema_current(session_factory)
+    except SchemaNotReadyError as error:
+        log.error("database_schema_not_ready", error=str(error))
+        await engine.dispose()
+        raise SystemExit(1) from error
+
     bot = create_bot(settings)
     ai_service = AIService(settings)
     runtime_ops = RuntimeOps(bot=bot, session_factory=session_factory, settings=settings)
