@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from bot.handlers.leads import DEFAULT_FOLLOWUP_HOURS, format_activity
 from bot.keyboards.inline import main_menu
 from services.parser import current_day_start_utc, has_blocked_keyword, is_stale, split_csv
-from services.post_state import APPROVABLE_STATUSES, FINAL_OUTCOME_STATUSES, can_approve
+from services.post_state import APPROVABLE_STATUSES, FINAL_OUTCOME_STATUSES, can_approve, can_mark_as_lead
 from services.text_tools import normalize_text, text_hash
 
 
@@ -41,6 +41,12 @@ class WorkflowGuardTests(unittest.TestCase):
         self.assertTrue(can_approve("queued_by_limit", False))
         self.assertFalse(can_approve("approved", True))
         self.assertFalse(can_approve("lead", False))
+
+    def test_lead_can_follow_completed_outreach_but_not_rejected_post(self) -> None:
+        self.assertTrue(can_mark_as_lead("commented"))
+        self.assertTrue(can_mark_as_lead("reviewer_done"))
+        self.assertFalse(can_mark_as_lead("not_relevant"))
+        self.assertFalse(can_mark_as_lead("skipped"))
 
     def test_workflow_status_sets_are_consistent(self) -> None:
         self.assertIn("pending", APPROVABLE_STATUSES)
