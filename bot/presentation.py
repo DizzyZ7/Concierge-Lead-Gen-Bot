@@ -24,6 +24,7 @@ STATUS_LABELS = {
     "lead": "Лид",
     "not_relevant": "Нерелевантно",
     "reviewer_done": "Обработано",
+    "processing_failed": "Ошибка обработки",
     "skipped": "Пропущено",
     "new": "Новый",
     "contacted": "В работе",
