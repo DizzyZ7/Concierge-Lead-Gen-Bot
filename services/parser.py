@@ -14,6 +14,7 @@ from core.logger import get_logger
 from db import queries
 from db.models import ParsedPost, ReviewDraft
 from services.ai import AIService
+from services.channel_cursor import advance_channel_cursor, iter_unseen_messages
 from services.failed_items import mark_processing_failed
 from services.runtime_ops import RuntimeOps
 from services.text_tools import text_hash
@@ -104,6 +105,7 @@ class ParserService:
                         min_score=to_float(channel.min_score, self.settings.relevance_threshold),
                         allowed_intents=channel.allowed_intents,
                         blocked_keywords=channel.blocked_keywords,
+                        last_seen_message_id=channel.last_seen_message_id,
                         max_post_age_hours=getattr(self.settings, "parser_max_post_age_hours", 24),
                         day_start=day_start,
                     )
@@ -128,25 +130,33 @@ class ParserService:
         min_score: float,
         allowed_intents: str | None,
         blocked_keywords: str | None,
+        last_seen_message_id: int | None,
         max_post_age_hours: int,
         day_start: datetime,
     ) -> None:
         allowed = split_csv(allowed_intents)
         drafts_today = await count_channel_drafts_since(session, channel_id, day_start)
         limit = max(daily_draft_limit, 0)
+        highest_seen_id = last_seen_message_id or 0
         try:
             entity = await self.client.get_entity(username)
-            async for message in self.client.iter_messages(entity, limit=self.settings.parser_limit_per_channel):
+            async for message in iter_unseen_messages(
+                self.client,
+                entity,
+                last_seen_message_id=last_seen_message_id,
+                limit=self.settings.parser_limit_per_channel,
+            ):
+                message_id = int(message.id)
+                highest_seen_id = max(highest_seen_id, message_id)
                 text = message.message or ""
                 if not text.strip():
                     continue
                 if is_stale(getattr(message, "date", None), max_post_age_hours):
-                    log.info("stale_post_skipped", channel=username, message_id=int(message.id), max_age_hours=max_post_age_hours)
+                    log.info("stale_post_skipped", channel=username, message_id=message_id, max_age_hours=max_post_age_hours)
                     continue
                 if has_blocked_keyword(text, blocked_keywords):
-                    log.info("blocked_keyword_post_skipped", channel=username, message_id=int(message.id))
+                    log.info("blocked_keyword_post_skipped", channel=username, message_id=message_id)
                     continue
-                message_id = int(message.id)
                 if await queries.post_exists(session, channel_id, message_id):
                     continue
                 hash_value = text_hash(text)
@@ -242,6 +252,8 @@ class ParserService:
                     if self.runtime_ops:
                         await self.runtime_ops.failure("parser", error, f"Ошибка обработки поста {username}/{message_id}")
                     continue
+            if highest_seen_id > (last_seen_message_id or 0):
+                await advance_channel_cursor(session, channel_id, highest_seen_id)
         except FloodWaitError as error:
             log.warning("parser_flood_wait", channel=username, seconds=error.seconds)
             if self.runtime_ops:
