@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 from pathlib import Path
 
 from telethon import TelegramClient
@@ -81,7 +82,16 @@ async def main() -> None:
             await parser.run_once()
 
     scheduler = create_scheduler(settings)
-    scheduler.add_job(reviewer.run_once, "interval", minutes=1, id="reviewer_dispatcher", max_instances=1, coalesce=True)
+    first_run = datetime.now(timezone.utc)
+    scheduler.add_job(
+        reviewer.run_once,
+        "interval",
+        minutes=1,
+        id="reviewer_dispatcher",
+        max_instances=1,
+        coalesce=True,
+        next_run_time=first_run,
+    )
     scheduler.add_job(
         run_limit_queue_promoter,
         "interval",
@@ -89,6 +99,7 @@ async def main() -> None:
         id="limit_queue_promoter",
         max_instances=1,
         coalesce=True,
+        next_run_time=first_run,
     )
     if parser:
         scheduler.add_job(
@@ -98,6 +109,7 @@ async def main() -> None:
             id="read_only_parser",
             max_instances=1,
             coalesce=True,
+            next_run_time=first_run,
         )
         log.info("parser_enabled", interval_minutes=settings.parser_interval_minutes)
     scheduler.start()
