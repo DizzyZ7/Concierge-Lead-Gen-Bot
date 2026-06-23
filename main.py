@@ -13,12 +13,14 @@ from core.scheduler import create_scheduler
 from db.migration_guard import SchemaNotReadyError, ensure_schema_current
 from db.session import create_engine, create_session_factory
 from services.ai import AIService
+from services.channel_validation import validate_channels
 from services.limit_queue_promoter import LimitQueuePromoter
 from services.parser import ParserService
 from services.reviewer_dispatcher import ReviewerDispatcher
 from services.runtime_ops import RuntimeOps
 
 log = get_logger(__name__)
+SOURCE_VALIDATION_INTERVAL_HOURS = 24
 
 
 async def build_parser(settings, session_factory, ai_service, runtime_ops) -> tuple[TelegramClient | None, ParserService | None]:
@@ -91,6 +93,23 @@ async def main() -> None:
         async with source_workflow_lock:
             await parser.run_once()
 
+    async def run_source_validation() -> None:
+        if not parser:
+            return
+        async with source_workflow_lock:
+            results = await validate_channels(parser.client, session_factory)
+        failed = [result for result in results if not result.ok]
+        details = f"checked={len(results)} failed={len(failed)}"
+        if failed:
+            usernames = ", ".join(result.username for result in failed[:5])
+            await runtime_ops.failure(
+                "source_validation",
+                RuntimeError(f"Недоступные источники: {usernames}"),
+                details,
+            )
+            return
+        await runtime_ops.heartbeat("source_validation", details)
+
     scheduler = create_scheduler(settings)
     first_run = datetime.now(timezone.utc)
     scheduler.add_job(
@@ -121,7 +140,20 @@ async def main() -> None:
             coalesce=True,
             next_run_time=first_run,
         )
-        log.info("parser_enabled", interval_minutes=settings.parser_interval_minutes)
+        scheduler.add_job(
+            run_source_validation,
+            "interval",
+            hours=SOURCE_VALIDATION_INTERVAL_HOURS,
+            id="source_validation",
+            max_instances=1,
+            coalesce=True,
+            next_run_time=first_run,
+        )
+        log.info(
+            "parser_enabled",
+            interval_minutes=settings.parser_interval_minutes,
+            validation_interval_hours=SOURCE_VALIDATION_INTERVAL_HOURS,
+        )
     scheduler.start()
 
     try:
