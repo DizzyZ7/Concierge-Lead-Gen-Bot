@@ -1,24 +1,49 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from html import escape
 
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.orm import selectinload
 
-from bot.keyboards.inline import approved_actions
-from bot.presentation import status_label
+from bot.keyboards.inline import approved_actions, reviewer_actions
+from bot.presentation import intent_label, status_label
 from db import queries
+from db.models import ParsedPost, ReviewDraft
 from services.ai import AIService
 from services.post_state import can_approve
 
 router = Router(name=__name__)
 
+DEFAULT_REVIEWER_BACKLOG_HOURS = 24
+MAX_REVIEWER_BACKLOG_HOURS = 24 * 30
+
 
 def cut(text: str | None, limit: int = 1000) -> str:
     value = text or ""
     return escape(value if len(value) <= limit else value[: limit - 1] + "...")
+
+
+def clamp_backlog_hours(value: str | None) -> int | None:
+    if value is None:
+        return DEFAULT_REVIEWER_BACKLOG_HOURS
+    if not value.isdigit():
+        return None
+    hours = int(value)
+    if hours < 1 or hours > MAX_REVIEWER_BACKLOG_HOURS:
+        return None
+    return hours
+
+
+def wait_hours(sent_at: datetime | None) -> int:
+    if sent_at is None:
+        return 0
+    normalized = sent_at if sent_at.tzinfo else sent_at.replace(tzinfo=timezone.utc)
+    return max(0, int((datetime.now(timezone.utc) - normalized).total_seconds() // 3600))
 
 
 def render_draft_card(post) -> str:
@@ -32,6 +57,27 @@ def render_draft_card(post) -> str:
         f"Источник текста: {escape(source)}\n"
         f"Ссылка: {escape(post.post_url or '-')}\n\n"
         f"<code>{cut(draft, 1800)}</code>"
+    )
+
+
+def render_backlog_card(post: ParsedPost) -> str:
+    channel = post.channel.channel_username if post.channel else "неизвестно"
+    draft = post.draft
+    sent_at = draft.sent_to_reviewer_at if draft else None
+    sent_text = "-"
+    if sent_at is not None:
+        normalized = sent_at if sent_at.tzinfo else sent_at.replace(tzinfo=timezone.utc)
+        sent_text = normalized.strftime("%d.%m %H:%M UTC")
+    return (
+        f"Просроченная reviewer-карточка #{post.id}\n"
+        f"Ждет решения: {wait_hours(sent_at)} ч.\n"
+        f"Отправлена: {escape(sent_text)}\n"
+        f"Канал: {escape(channel)}\n"
+        f"Категория: {escape(intent_label(post.intent))}\n"
+        f"Оценка: {post.relevance_score:.2f if post.relevance_score is not None else '-'}\n"
+        f"Ссылка: {escape(post.post_url or '-')}\n\n"
+        f"Кратко: {cut(post.content_summary, 400)}\n\n"
+        f"Черновик:\n<code>{cut(draft.draft_text if draft else '', 900)}</code>"
     )
 
 
@@ -81,6 +127,43 @@ async def send_approved_queue(message: Message, session_factory: async_sessionma
             f"Черновик:\n<code>{cut(draft.draft_text if draft else '', 900)}</code>"
         )
         await message.answer(text, reply_markup=approved_actions(post.id, post.post_url), disable_web_page_preview=True)
+
+
+async def send_reviewer_backlog(
+    message: Message,
+    session_factory: async_sessionmaker[AsyncSession],
+    older_than_hours: int,
+) -> None:
+    cutoff = datetime.now(timezone.utc).replace(microsecond=0)
+    cutoff = cutoff.replace(hour=cutoff.hour)  # preserve UTC-aware value for a readable local variable
+    from datetime import timedelta
+
+    cutoff -= timedelta(hours=older_than_hours)
+    async with session_factory() as session:
+        result = await session.scalars(
+            select(ParsedPost)
+            .options(selectinload(ParsedPost.channel), selectinload(ParsedPost.draft))
+            .join(ParsedPost.draft)
+            .where(
+                ParsedPost.status == "sent_to_reviewer",
+                ReviewDraft.sent_to_reviewer_at.is_not(None),
+                ReviewDraft.sent_to_reviewer_at <= cutoff,
+                ReviewDraft.marked_done_at.is_(None),
+            )
+            .order_by(ReviewDraft.sent_to_reviewer_at.asc())
+            .limit(20)
+        )
+        posts = result.all()
+    if not posts:
+        await message.answer(f"Reviewer-карточек без решения более {older_than_hours} ч. нет.")
+        return
+    await message.answer(f"Просроченные reviewer-карточки: {len(posts)}. Порог: {older_than_hours} ч.")
+    for post in posts:
+        await message.answer(
+            render_backlog_card(post),
+            reply_markup=reviewer_actions(post.id, post.post_url),
+            disable_web_page_preview=True,
+        )
 
 
 @router.callback_query(F.data.startswith("post:approve_now:"))
@@ -133,6 +216,16 @@ async def draft_command(message: Message, session_factory: async_sessionmaker[As
 @router.message(Command("approved_queue"))
 async def approved_queue_command(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
     await send_approved_queue(message, session_factory)
+
+
+@router.message(Command("reviewer_backlog"))
+async def reviewer_backlog_command(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    parts = (message.text or "").split(maxsplit=1)
+    hours = clamp_backlog_hours(parts[1] if len(parts) == 2 else None)
+    if hours is None:
+        await message.answer(f"Формат: /reviewer_backlog [hours], где hours от 1 до {MAX_REVIEWER_BACKLOG_HOURS}.")
+        return
+    await send_reviewer_backlog(message, session_factory, hours)
 
 
 @router.callback_query(F.data == "nav:approved_queue")
