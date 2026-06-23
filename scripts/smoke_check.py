@@ -8,6 +8,7 @@ from bot.handlers.leads import DEFAULT_FOLLOWUP_HOURS, format_activity
 from bot.main import create_bot, create_dispatcher
 from bot.presentation import intent_label, status_label
 from core.config import Settings
+from db.migration_guard import REQUIRED_ALEMBIC_REVISION
 from db.models import Lead, ParsedPost, TargetChannel
 from services.ai import AIService
 from services.channel_cursor import advance_channel_cursor, iter_unseen_messages, reset_channel_cursor
@@ -21,6 +22,7 @@ from services.text_tools import normalize_text, text_hash
 
 def main() -> None:
     now = datetime.now(timezone.utc)
+    assert REQUIRED_ALEMBIC_REVISION == "0008_channel_validation_state"
     assert split_csv("realty, visa,realty") == {"realty", "visa"}
     assert has_blocked_keyword("Crypto offer", "casino,crypto")
     assert not has_blocked_keyword("Thailand apartment", "casino,crypto")
