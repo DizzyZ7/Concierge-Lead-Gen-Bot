@@ -8,28 +8,29 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.keyboards.inline import approved_actions
+from bot.presentation import status_label
 from db import queries
 from services.ai import AIService
+from services.post_state import can_approve
 
 router = Router(name=__name__)
 
 
 def cut(text: str | None, limit: int = 1000) -> str:
-    if not text:
-        return ""
-    return escape(text if len(text) <= limit else text[: limit - 1] + "...")
+    value = text or ""
+    return escape(value if len(value) <= limit else value[: limit - 1] + "...")
 
 
 def render_draft_card(post) -> str:
-    channel = post.channel.channel_username if post.channel else "unknown"
-    draft = post.draft.draft_text if post.draft else "No draft yet. Approve item first."
+    channel = post.channel.channel_username if post.channel else "неизвестно"
+    draft = post.draft.draft_text if post.draft else "Черновик еще не создан. Сначала одобри пост."
     source = post.draft.draft_source if post.draft else "-"
     return (
-        f"Draft for item #{post.id}\n"
-        f"Status: {escape(post.status)}\n"
-        f"Channel: {escape(channel)}\n"
-        f"Source: {escape(source)}\n"
-        f"URL: {escape(post.post_url or '-')}\n\n"
+        f"Черновик для поста #{post.id}\n"
+        f"Статус: {escape(status_label(post.status))}\n"
+        f"Канал: {escape(channel)}\n"
+        f"Источник текста: {escape(source)}\n"
+        f"Ссылка: {escape(post.post_url or '-')}\n\n"
         f"<code>{cut(draft, 1800)}</code>"
     )
 
@@ -39,11 +40,13 @@ async def approve_now_flow(
     *,
     session_factory: async_sessionmaker[AsyncSession],
     ai_service: AIService,
-) -> bool:
+) -> str:
     async with session_factory() as session:
         post = await queries.get_post_with_details(session, post_id)
         if not post or not post.channel:
-            return False
+            return "missing"
+        if not can_approve(post.status, post.draft is not None):
+            return "blocked"
         text, source = await ai_service.generate_draft(post.post_text or "", post.channel.geo, post.intent, session)
         approved = await queries.approve_post(
             session,
@@ -54,41 +57,44 @@ async def approve_now_flow(
             delay_max=0,
         )
         if not approved:
-            return False
+            return "missing"
         if source == "ai":
             await queries.increment_stat(session, "ai_drafts", 1)
         else:
             await queries.increment_stat(session, "template_drafts", 1)
-        return True
+        return "updated"
 
 
 async def send_approved_queue(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
     async with session_factory() as session:
         posts = await queries.list_posts_by_status(session, "approved", 20)
     if not posts:
-        await message.answer("Approved queue is empty.")
+        await message.answer("Одобренная очередь пуста.")
         return
     for post in posts:
         draft = post.draft
         due = draft.due_at.isoformat() if draft and draft.due_at else "-"
         text = (
-            f"Approved #{post.id}\n"
-            f"Due at: {escape(due)}\n"
-            f"URL: {escape(post.post_url or '-')}\n\n"
-            f"Draft:\n<code>{cut(draft.draft_text if draft else '', 900)}</code>"
+            f"Одобрено #{post.id}\n"
+            f"Время отправки: {escape(due)}\n"
+            f"Ссылка: {escape(post.post_url or '-')}\n\n"
+            f"Черновик:\n<code>{cut(draft.draft_text if draft else '', 900)}</code>"
         )
-        await message.answer(text, reply_markup=approved_actions(post.id, post.post_url))
+        await message.answer(text, reply_markup=approved_actions(post.id, post.post_url), disable_web_page_preview=True)
 
 
 @router.callback_query(F.data.startswith("post:approve_now:"))
 async def approve_now_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession], ai_service: AIService) -> None:
     post_id = int(callback.data.split(":")[-1])
-    ok = await approve_now_flow(post_id, session_factory=session_factory, ai_service=ai_service)
-    if ok:
-        await callback.message.edit_text(f"Approved #{post_id}. It will be routed on the next scheduler tick.")
+    result = await approve_now_flow(post_id, session_factory=session_factory, ai_service=ai_service)
+    if result == "updated":
+        await callback.message.edit_text(f"Пост #{post_id} одобрен и будет отправлен reviewer-у в ближайший scheduler tick.")
         await callback.answer()
-    else:
-        await callback.answer("Not found", show_alert=True)
+        return
+    if result == "blocked":
+        await callback.answer("Этот пост уже был одобрен или закрыт", show_alert=True)
+        return
+    await callback.answer("Пост не найден", show_alert=True)
 
 
 @router.callback_query(F.data.startswith("post:dispatch:"))
@@ -96,7 +102,7 @@ async def dispatch_now_callback(callback: CallbackQuery, session_factory: async_
     post_id = int(callback.data.split(":")[-1])
     async with session_factory() as session:
         ok = await queries.dispatch_now(session, post_id)
-    await callback.answer("Scheduled" if ok else "Not found", show_alert=not ok)
+    await callback.answer("Поставлено на немедленную отправку" if ok else "Одобренный черновик не найден", show_alert=not ok)
 
 
 @router.callback_query(F.data.startswith("post:draft:"))
@@ -105,7 +111,7 @@ async def show_draft_callback(callback: CallbackQuery, session_factory: async_se
     async with session_factory() as session:
         post = await queries.get_post_with_details(session, post_id)
     if not post:
-        await callback.answer("Not found", show_alert=True)
+        await callback.answer("Пост не найден", show_alert=True)
         return
     await callback.answer()
     await callback.message.answer(render_draft_card(post))
@@ -117,11 +123,11 @@ async def draft_command(message: Message, session_factory: async_sessionmaker[As
         return
     parts = message.text.split(maxsplit=1)
     if len(parts) != 2 or not parts[1].isdigit():
-        await message.answer("Usage: /draft <post_id>")
+        await message.answer("Формат: /draft <post_id>")
         return
     async with session_factory() as session:
         post = await queries.get_post_with_details(session, int(parts[1]))
-    await message.answer(render_draft_card(post) if post else "Item not found.")
+    await message.answer(render_draft_card(post) if post else "Пост не найден.")
 
 
 @router.message(Command("approved_queue"))
