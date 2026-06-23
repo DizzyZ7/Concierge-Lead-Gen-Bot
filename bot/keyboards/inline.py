@@ -11,6 +11,7 @@ def main_menu() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Статистика каналов", callback_data="nav:channel_stats")],
             [InlineKeyboardButton(text="На проверке", callback_data="nav:pending")],
             [InlineKeyboardButton(text="Одобренные", callback_data="nav:approved_queue")],
+            [InlineKeyboardButton(text="Сверх дневного лимита", callback_data="nav:limit_queue")],
             [InlineKeyboardButton(text="Очередь reviewer-а", callback_data="nav:review_queue")],
             [InlineKeyboardButton(text="Сохраненные", callback_data="nav:saved_queue")],
             [InlineKeyboardButton(text="Идеи", callback_data="nav:content_ideas")],
