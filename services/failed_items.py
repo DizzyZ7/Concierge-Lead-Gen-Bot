@@ -17,6 +17,11 @@ async def mark_processing_failed(
     text_hash: str | None,
     error: Exception,
 ) -> None:
+    try:
+        await session.rollback()
+    except Exception:
+        pass
+
     reason = f"Ошибка обработки: {error.__class__.__name__}"[:400]
     existing = await session.scalar(
         select(ParsedPost).where(
