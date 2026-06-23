@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
@@ -14,6 +16,16 @@ from services.parser import count_channel_drafts_since, current_day_start_utc
 from services.runtime_ops import RuntimeOps
 
 log = get_logger(__name__)
+
+PROMOTION_LOOKAHEAD_MULTIPLIER = 5
+
+
+def available_daily_capacity(daily_limit: int, drafts_today: int) -> int:
+    return max(0, max(daily_limit, 0) - max(drafts_today, 0))
+
+
+def promotion_fetch_limit(capacity: int) -> int:
+    return max(capacity, 1) * PROMOTION_LOOKAHEAD_MULTIPLIER
 
 
 class LimitQueuePromoter:
@@ -64,18 +76,17 @@ class LimitQueuePromoter:
         self,
         session: AsyncSession,
         channel: TargetChannel,
-        day_start,
+        day_start: datetime,
     ) -> tuple[int, int]:
-        limit = max(channel.daily_draft_limit, 0)
         drafts_today = await count_channel_drafts_since(session, channel.id, day_start)
-        capacity = max(0, limit - drafts_today)
+        capacity = available_daily_capacity(channel.daily_draft_limit, drafts_today)
 
         queued_posts = await session.scalars(
             select(ParsedPost)
             .options(selectinload(ParsedPost.channel), selectinload(ParsedPost.draft))
             .where(ParsedPost.channel_id == channel.id, ParsedPost.status == "queued_by_limit")
             .order_by(ParsedPost.relevance_score.desc(), ParsedPost.created_at.asc())
-            .limit(max(capacity, 1) * 5)
+            .limit(promotion_fetch_limit(capacity))
         )
         posts = list(queued_posts.all())
         if not posts or capacity == 0:
