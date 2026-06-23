@@ -9,6 +9,7 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from bot.presentation import intent_label, status_label
 from db.models import ParsedPost, TargetChannel
 
 router = Router(name=__name__)
@@ -24,6 +25,7 @@ IMPORTANT_STATUSES = [
     "lead",
     "not_relevant",
     "reviewer_done",
+    "processing_failed",
     "skipped",
 ]
 
@@ -59,31 +61,33 @@ async def render_daily_report(session_factory: async_sessionmaker[AsyncSession])
     useful = sum(status_counts.get(status, 0) for status in GOOD_STATUSES)
     bad = sum(status_counts.get(status, 0) for status in BAD_STATUSES)
     queued_by_limit = status_counts.get("queued_by_limit", 0)
+    failed = status_counts.get("processing_failed", 0)
     usefulness = round((useful / total) * 100, 1) if total else 0.0
     noise = round((bad / total) * 100, 1) if total else 0.0
 
     lines = [
-        "Thailand Lead Radar — last 24 hours",
+        "Thailand Lead Radar — последние 24 часа",
         "",
-        f"New source items: {total}",
-        f"Useful outcomes: {useful} ({usefulness}%)",
-        f"Noise: {bad} ({noise}%)",
-        f"Queued by daily limits: {queued_by_limit}",
+        f"Новых постов: {total}",
+        f"Полезных исходов: {useful} ({usefulness}%)",
+        f"Шум: {bad} ({noise}%)",
+        f"Отложено по дневным лимитам: {queued_by_limit}",
+        f"Ошибок обработки: {failed}",
         "",
-        "Statuses:",
+        "Статусы:",
     ]
     for status in IMPORTANT_STATUSES:
-        lines.append(f"- {status}: {status_counts.get(status, 0)}")
+        lines.append(f"- {status_label(status)}: {status_counts.get(status, 0)}")
 
     intents = intent_rows.all()
     if intents:
-        lines.extend(["", "Top categories:"])
+        lines.extend(["", "Топ категорий:"])
         for intent, count in intents:
-            lines.append(f"- {intent}: {count}")
+            lines.append(f"- {intent_label(intent)}: {count}")
 
     channels = top_channel_rows.all()
     if channels:
-        lines.extend(["", "Best channels:"])
+        lines.extend(["", "Лучшие каналы:"])
         for channel, count in channels:
             lines.append(f"- {channel}: {count}")
 
@@ -103,7 +107,7 @@ async def render_channel_stats(session_factory: async_sessionmaker[AsyncSession]
         grouped[channel][status] = count
 
     if not grouped:
-        return "No channel stats yet."
+        return "Статистики по каналам пока нет."
 
     scored = []
     for channel, counts in grouped.items():
@@ -114,12 +118,16 @@ async def render_channel_stats(session_factory: async_sessionmaker[AsyncSession]
         scored.append((score, channel, total, useful, bad, counts))
 
     scored.sort(reverse=True)
-    lines = ["Channel quality stats — all time", ""]
+    lines = ["Качество каналов — за все время", ""]
     for score, channel, total, useful, bad, counts in scored[:20]:
         lines.append(f"{channel}")
-        lines.append(f"  quality: {score}% | total: {total} | useful: {useful} | noise: {bad}")
-        compact = ", ".join(f"{status}:{counts.get(status, 0)}" for status in IMPORTANT_STATUSES if counts.get(status, 0))
-        lines.append(f"  statuses: {compact or '-'}")
+        lines.append(f"  качество: {score}% | всего: {total} | полезно: {useful} | шум: {bad}")
+        compact = ", ".join(
+            f"{status_label(status)}:{counts.get(status, 0)}"
+            for status in IMPORTANT_STATUSES
+            if counts.get(status, 0)
+        )
+        lines.append(f"  статусы: {compact or '-'}")
     return "\n".join(lines)
 
 
@@ -140,6 +148,6 @@ async def daily_report_callback(callback: CallbackQuery, session_factory: async_
 
 
 @router.callback_query(F.data == "nav:channel_stats")
-async def channel_stats_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession]) -> None:
+async def channel_stats_callback(callback: CallbackQuery, session_factory: async_sessionmaker[Async_sessionmaker[AsyncSession]) -> None:
     await callback.answer()
     await callback.message.answer(await render_channel_stats(session_factory))
