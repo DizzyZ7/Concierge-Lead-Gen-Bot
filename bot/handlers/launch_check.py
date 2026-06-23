@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from core.config import Settings
 from db import queries
 from db.models import ParsedPost, TargetChannel
+from services.channel_validation import is_channel_validation_fresh
 from services.runtime_ops import get_component_runtime_state, parse_iso
 
 router = Router(name=__name__)
@@ -34,20 +35,23 @@ async def render_launch_check(session_factory: async_sessionmaker[AsyncSession],
             await session.execute(text("select 1"))
             db_ok = True
             paused = await queries.get_setting(session, "paused", "false") or "false"
-            active_channels = int(
-                await session.scalar(
-                    select(func.count(TargetChannel.id)).where(TargetChannel.is_active.is_(True))
-                )
-                or 0
-            )
-            unvalidated_channels = int(
-                await session.scalar(
-                    select(func.count(TargetChannel.id)).where(
-                        TargetChannel.is_active.is_(True),
-                        TargetChannel.channel_title.is_(None),
+            active_channel_rows = list(
+                (
+                    await session.scalars(
+                        select(TargetChannel)
+                        .where(TargetChannel.is_active.is_(True))
+                        .order_by(TargetChannel.id)
                     )
+                ).all()
+            )
+            active_channels = len(active_channel_rows)
+            unvalidated_channels = sum(
+                1
+                for channel in active_channel_rows
+                if not is_channel_validation_fresh(
+                    channel.last_validation_at,
+                    channel.last_validation_error,
                 )
-                or 0
             )
             failed_items = int(
                 await session.scalar(
@@ -91,7 +95,7 @@ async def render_launch_check(session_factory: async_sessionmaker[AsyncSession],
         f"{mark(parser_config_ok)} Parser: {'готов' if parser_config_ok else 'не настроен или выключен'}",
         f"{mark(reviewers_ok)} Reviewer-чаты: {len(settings.reviewer_chat_ids)}",
         f"{mark(channels_ok)} Активные каналы: {active_channels}",
-        f"{mark(validation_ok)} Валидация каналов: {'все подтверждены' if validation_ok else f'не подтверждено: {unvalidated_channels}'}",
+        f"{mark(validation_ok)} Валидация каналов: {'все свежие' if validation_ok else f'требуют проверки: {unvalidated_channels}'}",
         f"{mark(unpaused_ok)} Пауза: {'нет' if unpaused_ok else 'включена'}",
         f"{mark(failures_ok)} Ошибки обработки: {failed_items}",
         f"ℹ️ Очередь сверх дневного лимита: {queued_by_limit}",
