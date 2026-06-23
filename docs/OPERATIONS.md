@@ -1,5 +1,17 @@
 # Thailand Lead Radar — Operations
 
+## Deployment gate
+
+The application starts only when the database schema is on the current Alembic revision. Before every deploy with new code, run:
+
+```bash
+docker compose run --rm bot alembic upgrade head
+docker compose run --rm bot python -m scripts.smoke_check
+docker compose up -d --build
+```
+
+When migrations are behind, the bot exits before Telegram polling and logs the exact revision mismatch. This prevents a partially running process against an outdated schema.
+
 ## Daily checks
 
 ```text
