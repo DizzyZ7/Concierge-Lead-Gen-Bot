@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from html import escape
+
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
@@ -74,7 +76,7 @@ async def business_context_command(message: Message, session_factory: async_sess
             "/set_business_context Помогаем с ..."
         )
         return
-    await message.answer(f"Business context:\n\n{value}")
+    await message.answer(f"Business context:\n\n{escape(value)}")
 
 
 @router.message(Command("set_business_context"))
