@@ -36,6 +36,7 @@ HELP_TEXT = """Команды
 Каналы и мониторинг:
 /channels
 /add_channel @manual thailand relocation
+/validate_channels
 /set_channel_limit 1 5
 /set_channel_delay 1 0 0
 /set_channel_min_score 1 0.70
