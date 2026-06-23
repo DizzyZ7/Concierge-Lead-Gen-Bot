@@ -18,8 +18,9 @@ PARSER_ENABLED=true
 PARSER_INTERVAL_MINUTES=10
 PARSER_LIMIT_PER_CHANNEL=20
 RELEVANCE_THRESHOLD=0.70
-PARSER_MAX_POST_AGE_HOURS=24
 ```
+
+The parser has a built-in safety guard and ignores source posts older than 24 hours on the first monitoring pass.
 
 ## 2. Database and session
 
