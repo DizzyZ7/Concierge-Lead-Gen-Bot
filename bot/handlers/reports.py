@@ -28,10 +28,9 @@ IMPORTANT_STATUSES = [
     "processing_failed",
     "skipped",
 ]
-
-GOOD_STATUSES = {"lead", "commented", "content_idea", "saved", "reviewer_done"}
+CONFIRMED_OUTCOME_STATUSES = {"lead", "commented"}
+WORKING_SIGNAL_STATUSES = {"content_idea", "saved", "reviewer_done"}
 BAD_STATUSES = {"not_relevant", "skipped"}
-OUTCOME_STATUSES = {"lead", "commented"}
 OPEN_STATUSES = {"pending", "approved", "queued_by_limit", "sent_to_reviewer"}
 
 
@@ -45,6 +44,10 @@ def clamp_days(value: str | None, default: int = 7) -> int:
     return max(1, min(days, 90))
 
 
+def ratio(count: int, total: int) -> float:
+    return round((count / total) * 100, 1) if total else 0.0
+
+
 def quality_recommendation(
     *,
     total: int,
@@ -55,14 +58,11 @@ def quality_recommendation(
 ) -> str:
     if total < 3:
         return "нужно больше данных"
-    noise_rate = noise / total
-    outcome_rate = (leads + commented) / total
-    open_rate = open_items / total
-    if noise_rate >= 0.60:
+    if noise / total >= 0.60:
         return "шумный: поднять min_score или добавить стоп-слова"
-    if open_rate >= 0.50:
+    if open_items / total >= 0.50:
         return "много незакрытого: проверить лимит и reviewer-очередь"
-    if leads > 0 or outcome_rate >= 0.25:
+    if leads > 0 or (leads + commented) / total >= 0.25:
         return "сильный: держать в мониторинге, при необходимости расширить лимит"
     return "наблюдать и уточнять фильтры"
 
@@ -85,46 +85,43 @@ async def render_daily_report(session_factory: async_sessionmaker[AsyncSession])
         top_channel_rows = await session.execute(
             select(TargetChannel.channel_username, func.count(ParsedPost.id))
             .join(ParsedPost, ParsedPost.channel_id == TargetChannel.id)
-            .where(ParsedPost.created_at >= window_start, ParsedPost.status.in_(GOOD_STATUSES))
+            .where(ParsedPost.created_at >= window_start, ParsedPost.status.in_(CONFIRMED_OUTCOME_STATUSES))
             .group_by(TargetChannel.channel_username)
             .order_by(func.count(ParsedPost.id).desc())
             .limit(5)
         )
-    status_counts = {status: count for status, count in status_rows.all()}
-    total = sum(status_counts.values())
-    useful = sum(status_counts.get(status, 0) for status in GOOD_STATUSES)
-    bad = sum(status_counts.get(status, 0) for status in BAD_STATUSES)
-    queued_by_limit = status_counts.get("queued_by_limit", 0)
-    failed = status_counts.get("processing_failed", 0)
-    usefulness = round((useful / total) * 100, 1) if total else 0.0
-    noise = round((bad / total) * 100, 1) if total else 0.0
+
+    counts = {status: count for status, count in status_rows.all()}
+    total = sum(counts.values())
+    confirmed = sum(counts.get(status, 0) for status in CONFIRMED_OUTCOME_STATUSES)
+    working_signals = sum(counts.get(status, 0) for status in WORKING_SIGNAL_STATUSES)
+    noise = sum(counts.get(status, 0) for status in BAD_STATUSES)
+    queued_by_limit = counts.get("queued_by_limit", 0)
+    failed = counts.get("processing_failed", 0)
 
     lines = [
         "Thailand Lead Radar — последние 24 часа",
         "",
         f"Новых постов: {total}",
-        f"Полезных исходов: {useful} ({usefulness}%)",
-        f"Шум: {bad} ({noise}%)",
+        f"Подтвержденные результаты: {confirmed} ({ratio(confirmed, total)}%)",
+        f"Рабочие сигналы: {working_signals} ({ratio(working_signals, total)}%)",
+        f"Шум: {noise} ({ratio(noise, total)}%)",
         f"Отложено по дневным лимитам: {queued_by_limit}",
         f"Ошибок обработки: {failed}",
         "",
         "Статусы:",
     ]
-    for status in IMPORTANT_STATUSES:
-        lines.append(f"- {status_label(status)}: {status_counts.get(status, 0)}")
+    lines.extend(f"- {status_label(status)}: {counts.get(status, 0)}" for status in IMPORTANT_STATUSES)
 
     intents = intent_rows.all()
     if intents:
         lines.extend(["", "Топ категорий:"])
-        for intent, count in intents:
-            lines.append(f"- {intent_label(intent)}: {count}")
+        lines.extend(f"- {intent_label(intent)}: {count}" for intent, count in intents)
 
     channels = top_channel_rows.all()
     if channels:
-        lines.extend(["", "Лучшие каналы:"])
-        for channel, count in channels:
-            lines.append(f"- {channel}: {count}")
-
+        lines.extend(["", "Источники с подтвержденным результатом:"])
+        lines.extend(f"- {channel}: {count}" for channel, count in channels)
     return "\n".join(lines)
 
 
@@ -136,26 +133,29 @@ async def render_channel_stats(session_factory: async_sessionmaker[AsyncSession]
             .group_by(TargetChannel.channel_username, ParsedPost.status)
             .order_by(TargetChannel.channel_username)
         )
+
     grouped: dict[str, dict[str, int]] = defaultdict(dict)
     for channel, status, count in rows.all():
         grouped[channel][status] = count
-
     if not grouped:
         return "Статистики по каналам пока нет."
 
     scored = []
     for channel, counts in grouped.items():
         total = sum(counts.values())
-        useful = sum(counts.get(status, 0) for status in GOOD_STATUSES)
-        bad = sum(counts.get(status, 0) for status in BAD_STATUSES)
-        score = round((useful / total) * 100, 1) if total else 0.0
-        scored.append((score, channel, total, useful, bad, counts))
+        confirmed = sum(counts.get(status, 0) for status in CONFIRMED_OUTCOME_STATUSES)
+        working_signals = sum(counts.get(status, 0) for status in WORKING_SIGNAL_STATUSES)
+        noise = sum(counts.get(status, 0) for status in BAD_STATUSES)
+        scored.append((ratio(confirmed, total), channel, total, confirmed, working_signals, noise, counts))
 
     scored.sort(reverse=True)
-    lines = ["Качество каналов — за все время", ""]
-    for score, channel, total, useful, bad, counts in scored[:20]:
-        lines.append(f"{channel}")
-        lines.append(f"  качество: {score}% | всего: {total} | полезно: {useful} | шум: {bad}")
+    lines = ["Каналы — за все время", ""]
+    for confirmed_rate, channel, total, confirmed, working_signals, noise, counts in scored[:20]:
+        lines.append(channel)
+        lines.append(
+            f"  подтвержденный результат: {confirmed_rate}% | всего: {total} | "
+            f"результаты: {confirmed} | сигналы: {working_signals} | шум: {noise}"
+        )
         compact = ", ".join(
             f"{status_label(status)}:{counts.get(status, 0)}"
             for status in IMPORTANT_STATUSES
@@ -193,7 +193,7 @@ async def render_source_quality(session_factory: async_sessionmaker[AsyncSession
         commented = counts.get("commented", 0)
         noise = sum(counts.get(status, 0) for status in BAD_STATUSES)
         open_items = sum(counts.get(status, 0) for status in OPEN_STATUSES)
-        outcome_rate = round(((leads + commented) / total) * 100, 1) if total else 0.0
+        outcome_rate = ratio(leads + commented, total)
         recommendation = quality_recommendation(
             total=total,
             leads=leads,
@@ -201,7 +201,20 @@ async def render_source_quality(session_factory: async_sessionmaker[AsyncSession
             noise=noise,
             open_items=open_items,
         )
-        scored.append((leads, outcome_rate, username, title, total, commented, noise, open_items, counts.get("processing_failed", 0), recommendation))
+        scored.append(
+            (
+                leads,
+                outcome_rate,
+                username,
+                title,
+                total,
+                commented,
+                noise,
+                open_items,
+                counts.get("processing_failed", 0),
+                recommendation,
+            )
+        )
 
     scored.sort(key=lambda item: (item[0], item[1], item[4]), reverse=True)
     lines = [f"Качество источников — последние {days} дн.", ""]
@@ -229,8 +242,7 @@ async def channel_stats_command(message: Message, session_factory: async_session
 @router.message(Command("source_quality"))
 async def source_quality_command(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
     parts = (message.text or "").split(maxsplit=1)
-    days = clamp_days(parts[1] if len(parts) == 2 else None)
-    await message.answer(await render_source_quality(session_factory, days))
+    await message.answer(await render_source_quality(session_factory, clamp_days(parts[1] if len(parts) == 2 else None)))
 
 
 @router.callback_query(F.data == "nav:daily_report")
