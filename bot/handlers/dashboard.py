@@ -53,6 +53,7 @@ HELP_TEXT = """Команды
 /approved_queue
 /limit_queue
 /review_queue
+/reviewer_backlog [hours]
 /saved_queue
 /content_ideas
 /failed_queue
