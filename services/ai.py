@@ -31,6 +31,33 @@ MAX_SUMMARY_CHARS = 500
 MAX_ANGLE_CHARS = 500
 MAX_DRAFT_CHARS = 900
 
+GEO_ALIASES: dict[str, tuple[str, ...]] = {
+    "thailand": (
+        "таиланд",
+        "тайланд",
+        "thailand",
+        "пхукет",
+        "phuket",
+        "паттайя",
+        "pattaya",
+        "самуи",
+        "koh samui",
+        "бангкок",
+        "bangkok",
+        "краби",
+        "krabi",
+        "чиангмай",
+        "chiang mai",
+        "хуахин",
+        "hua hin",
+    ),
+    "phuket": ("пхукет", "phuket", "патонг", "patong", "ката", "karon", "карон", "rawai", "раваи"),
+    "pattaya": ("паттайя", "pattaya", "джомтьен", "jomtien", "наклыа", "naklua"),
+    "bangkok": ("бангкок", "bangkok", "сукхумвит", "sukhumvit", "тонглор", "thonglor"),
+    "samui": ("самуи", "koh samui", "чавенг", "chaweng", "ламай", "lamai"),
+    "krabi": ("краби", "krabi", "ао нанг", "ao nang"),
+}
+
 KEYWORDS: dict[str, tuple[str, ...]] = {
     "relocation": ("переезд", "релокация", "переехать", "relocation", "relocate"),
     "realty": ("жилье", "аренда", "квартира", "вилла", "condo", "real estate", "rent"),
@@ -169,6 +196,15 @@ class AIService:
             return fallback
         return text[:max_chars]
 
+    @staticmethod
+    def _geo_matches(text: str, geo: str) -> bool:
+        normalized_geo = geo.lower().strip()
+        aliases = {normalized_geo}
+        for key, values in GEO_ALIASES.items():
+            if normalized_geo == key or key in normalized_geo:
+                aliases.update(values)
+        return any(alias and alias in text for alias in aliases)
+
     async def _claude(self, user_prompt: str, max_tokens: int, temperature: float = 0.4) -> str:
         if not self.client:
             raise RuntimeError("Claude client is not configured")
@@ -211,7 +247,7 @@ class AIService:
             if current_hits > hits:
                 hits = current_hits
                 best_intent = intent
-        geo_bonus = 1 if geo.lower() in text else 0
+        geo_bonus = 1 if AIService._geo_matches(text, geo) else 0
         score = min(0.95, 0.5 + hits * 0.12 + geo_bonus * 0.08)
         reason = "Есть совпадения с приоритетными темами источника." if hits else "Пост сохранен для ручной проверки."
         summary = "Пост связан с потенциальным вопросом по выбранной тематике." if hits else "Пост требует ручной оценки."
