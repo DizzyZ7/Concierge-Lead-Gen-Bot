@@ -14,6 +14,7 @@ from sqlalchemy.orm import selectinload
 from bot.presentation import intent_label, status_label
 from db import queries
 from db.models import Lead
+from services.deals import record_deal_revenue
 
 router = Router(name=__name__)
 
@@ -52,7 +53,7 @@ def render_lead(lead: Lead) -> str:
         f"Категория: {escape(intent_label(lead.intent))}\n"
         f"Источник: {escape(source_text)}\n"
         f"Ссылка на источник: {escape(source_url or '-')}\n"
-        f"Сумма сделки: {lead.deal_amount or '-'}\n"
+        f"Доход / комиссия: {lead.deal_amount or '-'}\n"
         f"Последняя активность: {escape(format_activity(lead.updated_at or lead.created_at))}\n"
         f"Заметка: {escape(lead.notes or '-')}"
     )
@@ -259,16 +260,22 @@ async def deal_command(message: Message, session_factory: async_sessionmaker[Asy
         return
     parts = message.text.split(maxsplit=2)
     if len(parts) != 3 or not parts[1].isdigit():
-        await message.answer("Формат: /deal <lead_id> <amount>")
+        await message.answer("Формат: /deal <lead_id> <commission_amount>")
         return
     try:
-        amount = Decimal(parts[2].replace(",", "."))
+        revenue = Decimal(parts[2].replace(",", "."))
     except InvalidOperation:
-        await message.answer("Сумма должна быть числом.")
+        await message.answer("Доход / комиссия должны быть числом.")
         return
-    if amount <= 0:
-        await message.answer("Сумма должна быть больше нуля.")
+    if revenue <= 0:
+        await message.answer("Доход / комиссия должны быть больше нуля.")
         return
     async with session_factory() as session:
-        ok = await queries.close_deal(session, int(parts[1]), amount)
-    await message.answer("Сделка сохранена." if ok else "Лид не найден.")
+        result = await record_deal_revenue(session, lead_id=int(parts[1]), revenue=revenue)
+    messages = {
+        "created": "Сделка и фактический доход сохранены.",
+        "updated": "Сумма дохода исправлена, статистика скорректирована.",
+        "unchanged": "Сделка уже была сохранена с такой суммой.",
+        "missing": "Лид не найден.",
+    }
+    await message.answer(messages[result])
