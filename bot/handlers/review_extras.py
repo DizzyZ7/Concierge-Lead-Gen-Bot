@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from html import escape
 
 from aiogram import F, Router
@@ -46,7 +46,7 @@ def wait_hours(sent_at: datetime | None) -> int:
     return max(0, int((datetime.now(timezone.utc) - normalized).total_seconds() // 3600))
 
 
-def render_draft_card(post) -> str:
+def render_draft_card(post: ParsedPost) -> str:
     channel = post.channel.channel_username if post.channel else "неизвестно"
     draft = post.draft.draft_text if post.draft else "Черновик еще не создан. Сначала одобри пост."
     source = post.draft.draft_source if post.draft else "-"
@@ -68,13 +68,14 @@ def render_backlog_card(post: ParsedPost) -> str:
     if sent_at is not None:
         normalized = sent_at if sent_at.tzinfo else sent_at.replace(tzinfo=timezone.utc)
         sent_text = normalized.strftime("%d.%m %H:%M UTC")
+    score_text = f"{post.relevance_score:.2f}" if post.relevance_score is not None else "-"
     return (
         f"Просроченная reviewer-карточка #{post.id}\n"
         f"Ждет решения: {wait_hours(sent_at)} ч.\n"
         f"Отправлена: {escape(sent_text)}\n"
         f"Канал: {escape(channel)}\n"
         f"Категория: {escape(intent_label(post.intent))}\n"
-        f"Оценка: {post.relevance_score:.2f if post.relevance_score is not None else '-'}\n"
+        f"Оценка: {escape(score_text)}\n"
         f"Ссылка: {escape(post.post_url or '-')}\n\n"
         f"Кратко: {cut(post.content_summary, 400)}\n\n"
         f"Черновик:\n<code>{cut(draft.draft_text if draft else '', 900)}</code>"
@@ -134,11 +135,7 @@ async def send_reviewer_backlog(
     session_factory: async_sessionmaker[AsyncSession],
     older_than_hours: int,
 ) -> None:
-    cutoff = datetime.now(timezone.utc).replace(microsecond=0)
-    cutoff = cutoff.replace(hour=cutoff.hour)  # preserve UTC-aware value for a readable local variable
-    from datetime import timedelta
-
-    cutoff -= timedelta(hours=older_than_hours)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=older_than_hours)
     async with session_factory() as session:
         result = await session.scalars(
             select(ParsedPost)
