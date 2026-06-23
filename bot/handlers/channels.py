@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import timezone
 from html import escape
 
 from aiogram import F, Router
@@ -12,6 +13,7 @@ from bot.keyboards.inline import channel_actions
 from db import queries
 from services.ai import VALID_INTENTS
 from services.channel_cursor import reset_channel_cursor
+from services.channel_validation import is_channel_validation_fresh
 
 router = Router(name=__name__)
 
@@ -21,6 +23,19 @@ def clean_csv(value: str | None) -> str | None:
         return None
     parts = [part.strip().lower() for part in value.split(",") if part.strip()]
     return ",".join(dict.fromkeys(parts)) or None
+
+
+def format_channel_validation(channel) -> str:
+    checked_at = channel.last_validation_at
+    if checked_at is None:
+        return "не проверялся"
+    checked = checked_at if checked_at.tzinfo else checked_at.replace(tzinfo=timezone.utc)
+    checked_text = checked.astimezone(timezone.utc).strftime("%d.%m %H:%M UTC")
+    if channel.last_validation_error:
+        return f"ошибка {checked_text}: {channel.last_validation_error}"
+    if is_channel_validation_fresh(checked_at, channel.last_validation_error):
+        return f"подтвержден {checked_text}"
+    return f"устарело {checked_text}: запусти /validate_channels"
 
 
 async def send_channels(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
@@ -34,6 +49,7 @@ async def send_channels(message: Message, session_factory: async_sessionmaker[As
             f"Канал #{channel.id}\n"
             f"Username: {escape(channel.channel_username)}\n"
             f"Название: {escape(channel.channel_title or '-')}\n"
+            f"Валидация: {escape(format_channel_validation(channel))}\n"
             f"Гео: {escape(channel.geo)}\n"
             f"Категория: {escape(channel.category or '-')}\n"
             f"Мониторинг: {'включен' if channel.is_active else 'выключен'}\n"
