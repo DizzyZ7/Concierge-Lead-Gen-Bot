@@ -29,6 +29,7 @@ HELP_TEXT = """Команды
 /queue_stats
 /daily_report
 /channel_stats
+/source_quality [days]
 /settings
 /pause
 /resume
