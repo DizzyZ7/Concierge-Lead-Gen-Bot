@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from html import escape
 
@@ -17,6 +18,23 @@ from db.models import Lead
 router = Router(name=__name__)
 
 LEAD_STATUSES = {"new", "contacted", "converted", "dead"}
+OPEN_LEAD_STATUSES = {"new", "contacted"}
+DEFAULT_FOLLOWUP_HOURS = 48
+MAX_FOLLOWUP_HOURS = 24 * 30
+
+
+def as_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
+def format_activity(value: datetime | None) -> str:
+    normalized = as_utc(value)
+    if normalized is None:
+        return "-"
+    age = max(0, int((datetime.now(timezone.utc) - normalized).total_seconds() // 3600))
+    return f"{normalized.strftime('%d.%m %H:%M UTC')} ({age} ч. назад)"
 
 
 def render_lead(lead: Lead) -> str:
@@ -35,6 +53,7 @@ def render_lead(lead: Lead) -> str:
         f"Источник: {escape(source_text)}\n"
         f"Ссылка на источник: {escape(source_url or '-')}\n"
         f"Сумма сделки: {lead.deal_amount or '-'}\n"
+        f"Последняя активность: {escape(format_activity(lead.updated_at or lead.created_at))}\n"
         f"Заметка: {escape(lead.notes or '-')}"
     )
 
@@ -53,7 +72,7 @@ async def send_leads(
     status: str | None = "new",
 ) -> None:
     async with session_factory() as session:
-        statement = select(Lead).options(selectinload(Lead.source_post)).order_by(Lead.created_at.desc()).limit(30)
+        statement = select(Lead).options(selectinload(Lead.source_post)).order_by(Lead.updated_at.desc()).limit(30)
         if status:
             statement = statement.where(Lead.status == status)
         result = await session.scalars(statement)
@@ -91,6 +110,38 @@ async def render_funnel(session_factory: async_sessionmaker[AsyncSession]) -> st
     )
 
 
+async def send_followups(
+    message: Message,
+    session_factory: async_sessionmaker[AsyncSession],
+    followup_hours: int,
+) -> None:
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=followup_hours)
+    async with session_factory() as session:
+        result = await session.scalars(
+            select(Lead)
+            .options(selectinload(Lead.source_post))
+            .where(Lead.status.in_(OPEN_LEAD_STATUSES), Lead.updated_at <= cutoff)
+            .order_by(Lead.updated_at.asc())
+            .limit(30)
+        )
+        leads = result.all()
+    if not leads:
+        await message.answer(f"Лидов без активности более {followup_hours} ч. нет.")
+        return
+
+    lines = [f"Follow-up: нет активности более {followup_hours} ч.", ""]
+    for lead in leads:
+        source = f"#{lead.source_post.id}" if lead.source_post else "-"
+        username = f"@{lead.tg_username}" if lead.tg_username else "-"
+        lines.append(
+            f"Лид #{lead.id} | {status_label(lead.status)} | {intent_label(lead.intent)}\n"
+            f"Контакт: {username}\n"
+            f"Источник: {source}\n"
+            f"Последняя активность: {format_activity(lead.updated_at or lead.created_at)}"
+        )
+    await message.answer("\n\n".join(lines), disable_web_page_preview=True)
+
+
 @router.message(Command("leads"))
 async def leads_command(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
     parts = (message.text or "").split(maxsplit=1)
@@ -118,6 +169,21 @@ async def lead_command(message: Message, session_factory: async_sessionmaker[Asy
 @router.message(Command("funnel"))
 async def funnel_command(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
     await message.answer(await render_funnel(session_factory))
+
+
+@router.message(Command("followups"))
+async def followups_command(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    parts = (message.text or "").split(maxsplit=1)
+    followup_hours = DEFAULT_FOLLOWUP_HOURS
+    if len(parts) == 2:
+        if not parts[1].isdigit():
+            await message.answer("Формат: /followups [hours]")
+            return
+        followup_hours = int(parts[1])
+    if followup_hours < 1 or followup_hours > MAX_FOLLOWUP_HOURS:
+        await message.answer(f"Укажи значение от 1 до {MAX_FOLLOWUP_HOURS} часов.")
+        return
+    await send_followups(message, session_factory, followup_hours)
 
 
 @router.callback_query(F.data == "nav:leads")
@@ -155,12 +221,36 @@ async def lead_status_command(message: Message, session_factory: async_sessionma
     if not message.text:
         return
     parts = message.text.split(maxsplit=2)
-    if len(parts) != 3 or not parts[1].isdigit() or parts[2] not in LEAD_STATUSES:
+    status = parts[2].lower() if len(parts) == 3 else ""
+    if len(parts) != 3 or not parts[1].isdigit() or status not in LEAD_STATUSES:
         await message.answer("Формат: /lead_status <lead_id> <new|contacted|converted|dead>")
         return
     async with session_factory() as session:
-        ok = await queries.update_lead_status(session, int(parts[1]), parts[2])
-    await message.answer("Статус обновлен." if ok else "Лид не найден.")
+        ok = await queries.update_lead_status(session, int(parts[1]), status)
+    await message.answer("Статус обновлен, активность зафиксирована." if ok else "Лид не найден.")
+
+
+@router.message(Command("lead_note"))
+async def lead_note_command(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    parts = (message.text or "").split(maxsplit=2)
+    if len(parts) != 3 or not parts[1].isdigit():
+        await message.answer("Формат: /lead_note <lead_id> <text>")
+        return
+    lead_id = int(parts[1])
+    note = parts[2].strip()
+    if not note:
+        await message.answer("Заметка не должна быть пустой.")
+        return
+    timestamp = datetime.now(timezone.utc).strftime("%d.%m %H:%M UTC")
+    async with session_factory() as session:
+        lead = await session.get(Lead, lead_id)
+        if not lead:
+            await message.answer("Лид не найден.")
+            return
+        entry = f"[{timestamp}] {note}"
+        lead.notes = f"{lead.notes}\n\n{entry}" if lead.notes else entry
+        await session.commit()
+    await message.answer("Заметка добавлена, активность обновлена.")
 
 
 @router.message(Command("deal"))
