@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.keyboards.inline import channel_actions
 from db import queries
+from services.ai import VALID_INTENTS
 from services.channel_cursor import reset_channel_cursor
 
 router = Router(name=__name__)
@@ -32,6 +33,7 @@ async def send_channels(message: Message, session_factory: async_sessionmaker[As
         text = (
             f"Канал #{channel.id}\n"
             f"Username: {escape(channel.channel_username)}\n"
+            f"Название: {escape(channel.channel_title or '-')}\n"
             f"Гео: {escape(channel.geo)}\n"
             f"Категория: {escape(channel.category or '-')}\n"
             f"Мониторинг: {'включен' if channel.is_active else 'выключен'}\n"
@@ -74,7 +76,7 @@ async def add_channel_command(message: Message, session_factory: async_sessionma
             await session.rollback()
             await message.answer("Такой канал уже добавлен.")
             return
-    await message.answer(f"Добавлен канал #{channel.id}.")
+    await message.answer(f"Добавлен канал #{channel.id}. Проверь доступ через /validate_channels.")
 
 
 @router.message(Command("set_channel_limit"))
@@ -141,6 +143,12 @@ async def set_channel_intents_command(message: Message, session_factory: async_s
         await message.answer("Формат: /set_channel_intents <channel_id> <intent1,intent2|->")
         return
     intents = clean_csv(parts[2])
+    if intents:
+        invalid = sorted(set(intents.split(",")) - VALID_INTENTS)
+        if invalid:
+            available = ", ".join(sorted(VALID_INTENTS))
+            await message.answer(f"Неизвестные intent: {', '.join(invalid)}\nДоступные: {available}")
+            return
     async with session_factory() as session:
         channel = await queries.set_channel_allowed_intents(session, int(parts[1]), intents)
     await message.answer("Обновлено." if channel else "Канал не найден.")
@@ -171,7 +179,7 @@ async def reset_channel_cursor_command(message: Message, session_factory: async_
     async with session_factory() as session:
         ok = await reset_channel_cursor(session, int(parts[1]))
     await message.answer(
-        "Cursor сброшен. На следующем проходе parser возьмет свежий стартовый срез сообщений."
+        "Cursor сброшен. Теперь используй /scan_now, чтобы сразу взять свежий стартовый срез сообщений."
         if ok
         else "Канал не найден."
     )
