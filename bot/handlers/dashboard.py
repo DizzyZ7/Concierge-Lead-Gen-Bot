@@ -49,6 +49,7 @@ HELP_TEXT = """Команды
 /review_queue
 /saved_queue
 /content_ideas
+/failed_queue
 /source <post_id>
 /draft <post_id>
 /dispatch_now <post_id>
@@ -126,6 +127,7 @@ async def render_queue_stats(session_factory: async_sessionmaker[AsyncSession]) 
         "lead",
         "not_relevant",
         "reviewer_done",
+        "processing_failed",
         "skipped",
     ]
     async with session_factory() as session:
@@ -209,6 +211,6 @@ async def queue_stats_command(message: Message, session_factory: async_sessionma
 
 
 @router.callback_query(F.data == "nav:dashboard")
-async def dashboard_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession]) -> None:
+async def dashboard_callback(callback: CallbackQuery, session_factory: async_sessionmaker[Async_sessionmaker[AsyncSession]) -> None:
     await callback.answer()
     await callback.message.answer(await render_dashboard(session_factory), reply_markup=main_menu())
