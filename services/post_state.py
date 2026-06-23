@@ -76,5 +76,27 @@ async def apply_result_once(session: AsyncSession, post_id: int, target_status: 
     return "blocked"
 
 
+async def save_post_once(session: AsyncSession, post_id: int) -> TransitionResult:
+    result = await session.execute(
+        update(ParsedPost)
+        .where(
+            ParsedPost.id == post_id,
+            ParsedPost.status != "saved",
+            ~ParsedPost.status.in_(FINAL_OUTCOME_STATUSES),
+        )
+        .values(status="saved")
+    )
+    if result.rowcount:
+        await session.commit()
+        return "updated"
+
+    current = await _current_status(session, post_id)
+    if current is None:
+        return "missing"
+    if current == "saved":
+        return "already"
+    return "blocked"
+
+
 async def skip_post_once(session: AsyncSession, post_id: int) -> TransitionResult:
     return await apply_result_once(session, post_id, "skipped")
