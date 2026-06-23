@@ -10,6 +10,7 @@ from aiogram.types import Message
 from services.channel_validation import validate_channels
 from services.limit_queue_promoter import LimitQueuePromoter
 from services.parser import ParserService
+from services.runtime_ops import RuntimeOps
 
 router = Router(name=__name__)
 
@@ -54,6 +55,7 @@ async def validate_channels_command(
     message: Message,
     parser_service: ParserService | None,
     source_workflow_lock: Lock,
+    runtime_ops: RuntimeOps,
 ) -> None:
     if parser_service is None:
         await message.answer("Проверка недоступна: parser не настроен или Telegram session не авторизована.")
@@ -61,8 +63,21 @@ async def validate_channels_command(
     async with source_workflow_lock:
         results = await validate_channels(parser_service.client, parser_service.session_factory)
     if not results:
+        await runtime_ops.heartbeat("source_validation", "checked=0 failed=0")
         await message.answer("Каналов пока нет. Сначала добавь источники через /add_channel.")
         return
+
+    failed = [item for item in results if not item.ok]
+    details = f"checked={len(results)} failed={len(failed)}"
+    if failed:
+        usernames = ", ".join(item.username for item in failed[:5])
+        await runtime_ops.failure(
+            "source_validation",
+            RuntimeError(f"Недоступные источники: {usernames}"),
+            details,
+        )
+    else:
+        await runtime_ops.heartbeat("source_validation", details)
 
     lines = ["Проверка Telegram-источников", ""]
     for item in results:
