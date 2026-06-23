@@ -405,11 +405,12 @@ async def update_lead_status(session: AsyncSession, lead_id: int, status: str) -
 
 
 async def close_deal(session: AsyncSession, lead_id: int, amount: Decimal) -> bool:
+    """Legacy helper: amount is the actual earned commission, not deal turnover."""
     lead = await session.get(Lead, lead_id)
     if not lead:
         return False
     lead.status = "converted"
     lead.deal_amount = amount
     await increment_stat(session, "deals_closed", 1)
-    await increment_stat(session, "revenue", amount * Decimal("0.40"))
+    await increment_stat(session, "revenue", amount)
     return True
