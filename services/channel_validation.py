@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from telethon import TelegramClient
 
 from db import queries
 from db.models import TargetChannel
+
+VALIDATION_MAX_AGE = timedelta(days=7)
 
 
 @dataclass(frozen=True)
@@ -18,6 +21,19 @@ class ChannelValidationResult:
     error: str | None = None
 
 
+def is_channel_validation_fresh(
+    checked_at: datetime | None,
+    error: str | None,
+    *,
+    now: datetime | None = None,
+) -> bool:
+    if checked_at is None or error:
+        return False
+    current = now or datetime.now(timezone.utc)
+    checked = checked_at if checked_at.tzinfo else checked_at.replace(tzinfo=timezone.utc)
+    return current - checked <= VALIDATION_MAX_AGE
+
+
 async def validate_channels(
     client: TelegramClient,
     session_factory: async_sessionmaker[AsyncSession],
@@ -25,13 +41,12 @@ async def validate_channels(
     async with session_factory() as session:
         channels = await queries.list_channels(session)
 
+    checked_at = datetime.now(timezone.utc)
     results: list[ChannelValidationResult] = []
-    titles: dict[int, str | None] = {}
     for channel in channels:
         try:
             entity = await client.get_entity(channel.channel_username)
             title = str(getattr(entity, "title", "") or "") or None
-            titles[channel.id] = title
             results.append(
                 ChannelValidationResult(
                     channel_id=channel.id,
@@ -50,12 +65,17 @@ async def validate_channels(
                 )
             )
 
-    if titles:
-        async with session_factory() as session:
-            for channel_id, title in titles.items():
-                row = await session.get(TargetChannel, channel_id)
-                if row:
-                    row.channel_title = title
-            await session.commit()
+    async with session_factory() as session:
+        for result in results:
+            row = await session.get(TargetChannel, result.channel_id)
+            if not row:
+                continue
+            row.last_validation_at = checked_at
+            if result.ok:
+                row.channel_title = result.title
+                row.last_validation_error = None
+            else:
+                row.last_validation_error = result.error
+        await session.commit()
 
     return results
