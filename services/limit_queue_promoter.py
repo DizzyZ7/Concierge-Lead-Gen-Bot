@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 
 from sqlalchemy import select
@@ -18,6 +19,13 @@ from services.runtime_ops import RuntimeOps
 log = get_logger(__name__)
 
 PROMOTION_LOOKAHEAD_MULTIPLIER = 5
+
+
+@dataclass(frozen=True)
+class PromotionResult:
+    promoted: int
+    queued: int
+    paused: bool = False
 
 
 def available_daily_capacity(daily_limit: int, drafts_today: int) -> int:
@@ -44,13 +52,13 @@ class LimitQueuePromoter:
         self.settings = settings
         self.runtime_ops = runtime_ops
 
-    async def run_once(self) -> None:
+    async def run_once(self) -> PromotionResult | None:
         try:
             async with self.session_factory() as session:
                 if await queries.is_paused(session):
                     if self.runtime_ops:
                         await self.runtime_ops.heartbeat("limit_queue", "paused")
-                    return
+                    return PromotionResult(promoted=0, queued=0, paused=True)
 
                 day_start = current_day_start_utc(self.settings.timezone)
                 channels = await queries.list_active_channels(session)
@@ -66,11 +74,13 @@ class LimitQueuePromoter:
                     "limit_queue",
                     f"active_channels={len(channels)} promoted={promoted_total} queued={queued_total}",
                 )
+            return PromotionResult(promoted=promoted_total, queued=queued_total)
         except Exception as error:
             if self.runtime_ops:
                 await self.runtime_ops.failure("limit_queue", error, "Ошибка продвижения очереди дневных лимитов")
             else:
                 log.warning("limit_queue_promoter_failed", error=str(error))
+            return None
 
     async def _promote_channel(
         self,
