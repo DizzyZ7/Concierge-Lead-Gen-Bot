@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
@@ -19,6 +19,7 @@ from services.runtime_ops import RuntimeOps
 log = get_logger(__name__)
 
 PROMOTION_LOOKAHEAD_MULTIPLIER = 5
+MAX_LIMIT_QUEUE_AGE = timedelta(hours=24)
 
 
 @dataclass(frozen=True)
@@ -37,7 +38,7 @@ def promotion_fetch_limit(capacity: int) -> int:
 
 
 class LimitQueuePromoter:
-    """Promotes quality posts held by a channel daily cap when new capacity is available."""
+    """Promotes fresh quality posts held by a channel daily cap when capacity is available."""
 
     def __init__(
         self,
@@ -82,12 +83,35 @@ class LimitQueuePromoter:
                 log.warning("limit_queue_promoter_failed", error=str(error))
             return None
 
+    async def _archive_stale_posts(self, session: AsyncSession, channel: TargetChannel) -> int:
+        cutoff = datetime.now(timezone.utc) - MAX_LIMIT_QUEUE_AGE
+        result = await session.execute(
+            update(ParsedPost)
+            .where(
+                ParsedPost.channel_id == channel.id,
+                ParsedPost.status == "queued_by_limit",
+                ParsedPost.created_at < cutoff,
+            )
+            .values(status="saved")
+        )
+        archived = int(result.rowcount or 0)
+        if archived:
+            await session.commit()
+            log.info(
+                "stale_limit_queue_posts_saved",
+                channel=channel.channel_username,
+                count=archived,
+                max_age_hours=int(MAX_LIMIT_QUEUE_AGE.total_seconds() // 3600),
+            )
+        return archived
+
     async def _promote_channel(
         self,
         session: AsyncSession,
         channel: TargetChannel,
         day_start: datetime,
     ) -> tuple[int, int]:
+        await self._archive_stale_posts(session, channel)
         queue_size = int(
             await session.scalar(
                 select(func.count(ParsedPost.id)).where(
