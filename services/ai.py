@@ -26,6 +26,10 @@ VALID_INTENTS = frozenset(
         "unknown",
     }
 )
+MAX_REASON_CHARS = 320
+MAX_SUMMARY_CHARS = 500
+MAX_ANGLE_CHARS = 500
+MAX_DRAFT_CHARS = 900
 
 KEYWORDS: dict[str, tuple[str, ...]] = {
     "relocation": ("переезд", "релокация", "переехать", "relocation", "relocate"),
@@ -88,9 +92,21 @@ class AIService:
                 return {
                     "score": max(0.0, min(float(parsed.get("score", 0.5)), 1.0)),
                     "intent": self._safe_intent(parsed.get("intent")),
-                    "reason": str(parsed.get("reason", "Пост может быть полезен для ручной проверки.")),
-                    "summary": str(parsed.get("summary", "Краткое резюме не сформировано.")),
-                    "angle": str(parsed.get("angle", "Можно аккуратно зайти с полезным уточнением или советом.")),
+                    "reason": self._compact_text(
+                        parsed.get("reason"),
+                        "Пост может быть полезен для ручной проверки.",
+                        MAX_REASON_CHARS,
+                    ),
+                    "summary": self._compact_text(
+                        parsed.get("summary"),
+                        "Краткое резюме не сформировано.",
+                        MAX_SUMMARY_CHARS,
+                    ),
+                    "angle": self._compact_text(
+                        parsed.get("angle"),
+                        "Можно аккуратно зайти с полезным уточнением или советом.",
+                        MAX_ANGLE_CHARS,
+                    ),
                 }
             except Exception as error:
                 log.warning("claude_score_failed", error=str(error))
@@ -114,7 +130,11 @@ class AIService:
                     f"Style: {style}. Geo: {geo}. Intent: {safe_intent}. "
                     f"{self._business_context_prompt(business_context)} Source text: <source>{post_text[:3500]}</source>"
                 )
-                text = (await self._claude(prompt, 300, temperature=0.65)).strip().strip('"')
+                text = self._compact_text(
+                    (await self._claude(prompt, 300, temperature=0.65)).strip().strip('"'),
+                    "",
+                    MAX_DRAFT_CHARS,
+                )
                 if len(text) >= 10:
                     return text, "ai"
             except Exception as error:
@@ -141,6 +161,13 @@ class AIService:
     def _safe_intent(value: Any) -> str:
         candidate = str(value or "unknown").lower().strip()
         return candidate if candidate in VALID_INTENTS else "unknown"
+
+    @staticmethod
+    def _compact_text(value: Any, fallback: str, max_chars: int) -> str:
+        text = " ".join(str(value or "").split())
+        if not text:
+            return fallback
+        return text[:max_chars]
 
     async def _claude(self, user_prompt: str, max_tokens: int, temperature: float = 0.4) -> str:
         if not self.client:
