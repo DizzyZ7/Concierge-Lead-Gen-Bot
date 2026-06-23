@@ -69,7 +69,7 @@ async def retry_failed_callback(
             if not post or not post.channel:
                 await callback.answer("Пост не найден", show_alert=True)
                 return
-            score = await ai_service.score_post(post.post_text or "", post.channel.geo)
+            score = await ai_service.score_post(post.post_text or "", post.channel.geo, session)
             value = float(score.get("score", 0.5))
             intent = str(score.get("intent", "unknown")).lower()
             post.relevance_score = value
