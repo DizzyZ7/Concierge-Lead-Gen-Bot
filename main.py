@@ -48,7 +48,14 @@ async def main() -> None:
     bot = create_bot(settings)
     ai_service = AIService(settings)
     runtime_ops = RuntimeOps(bot=bot, session_factory=session_factory, settings=settings)
-    dispatcher = create_dispatcher(settings=settings, session_factory=session_factory, ai_service=ai_service)
+    source_workflow_lock = asyncio.Lock()
+    dispatcher = create_dispatcher(
+        settings=settings,
+        session_factory=session_factory,
+        ai_service=ai_service,
+        runtime_ops=runtime_ops,
+        source_workflow_lock=source_workflow_lock,
+    )
     reviewer = ReviewerDispatcher(
         bot=bot,
         session_factory=session_factory,
@@ -62,7 +69,6 @@ async def main() -> None:
         runtime_ops=runtime_ops,
     )
     telegram_client, parser = await build_parser(settings, session_factory, ai_service, runtime_ops)
-    source_workflow_lock = asyncio.Lock()
 
     async def run_limit_queue_promoter() -> None:
         async with source_workflow_lock:
