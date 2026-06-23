@@ -14,6 +14,7 @@ from core.logger import get_logger
 from db import queries
 from db.models import ParsedPost, ReviewDraft
 from services.ai import AIService
+from services.failed_items import mark_processing_failed
 from services.runtime_ops import RuntimeOps
 from services.text_tools import text_hash
 
@@ -152,80 +153,95 @@ class ParserService:
                 if await queries.text_hash_exists(session, hash_value):
                     log.info("duplicate_post_skipped", channel=username, message_id=message_id)
                     continue
-                score = await self.ai_service.score_post(text, geo)
-                value = float(score.get("score", 0.5))
-                intent = str(score.get("intent", "unknown")).lower()
-                if allowed and intent not in allowed:
-                    log.info("intent_filtered_post_skipped", channel=username, message_id=message_id, intent=intent)
-                    continue
-                reason = str(score.get("reason", "Пост требует ручной проверки."))
-                summary = str(score.get("summary", "Краткое резюме не сформировано."))
-                angle = str(score.get("angle", "Можно аккуратно зайти с полезным уточнением или советом."))
-                if value < min_score:
-                    status = "pending"
-                elif drafts_today >= limit:
-                    status = "queued_by_limit"
-                else:
-                    status = "approved"
                 post_url = f"https://t.me/{username.lstrip('@')}/{message_id}"
-                post = await queries.create_post(
-                    session,
-                    channel_id=channel_id,
-                    tg_message_id=message_id,
-                    post_text=text,
-                    post_url=post_url,
-                    score=value,
-                    intent=intent,
-                    status=status,
-                    relevance_reason=reason,
-                    content_summary=summary,
-                    suggested_angle=angle,
-                    text_hash=hash_value,
-                )
-                if status == "approved":
-                    draft_text, source = await self.ai_service.generate_draft(text, geo, intent, session)
-                    await queries.approve_post(
-                        session,
-                        post_id=post.id,
-                        draft_text=draft_text,
-                        source=source,
-                        delay_min=delay_min,
-                        delay_max=delay_max,
-                    )
-                    drafts_today += 1
-                    if source == "ai":
-                        await queries.increment_stat(session, "ai_drafts", 1)
+                try:
+                    score = await self.ai_service.score_post(text, geo)
+                    value = float(score.get("score", 0.5))
+                    intent = str(score.get("intent", "unknown")).lower()
+                    if allowed and intent not in allowed:
+                        log.info("intent_filtered_post_skipped", channel=username, message_id=message_id, intent=intent)
+                        continue
+                    reason = str(score.get("reason", "Пост требует ручной проверки."))
+                    summary = str(score.get("summary", "Краткое резюме не сформировано."))
+                    angle = str(score.get("angle", "Можно аккуратно зайти с полезным уточнением или советом."))
+                    if value < min_score:
+                        status = "pending"
+                    elif drafts_today >= limit:
+                        status = "queued_by_limit"
                     else:
-                        await queries.increment_stat(session, "template_drafts", 1)
-                    log.info(
-                        "relevant_post_routed",
-                        channel=username,
-                        post_id=post.id,
+                        status = "approved"
+                    post = await queries.create_post(
+                        session,
+                        channel_id=channel_id,
+                        tg_message_id=message_id,
+                        post_text=text,
+                        post_url=post_url,
                         score=value,
                         intent=intent,
-                        min_score=min_score,
-                        daily_draft_limit=limit,
-                        delay_min=delay_min,
-                        delay_max=delay_max,
+                        status=status,
+                        relevance_reason=reason,
+                        content_summary=summary,
+                        suggested_angle=angle,
+                        text_hash=hash_value,
                     )
-                elif status == "queued_by_limit":
-                    log.info(
-                        "post_queued_by_daily_limit",
-                        channel=username,
-                        post_id=post.id,
-                        score=value,
-                        intent=intent,
-                        daily_draft_limit=limit,
+                    if status == "approved":
+                        draft_text, source = await self.ai_service.generate_draft(text, geo, intent, session)
+                        await queries.approve_post(
+                            session,
+                            post_id=post.id,
+                            draft_text=draft_text,
+                            source=source,
+                            delay_min=delay_min,
+                            delay_max=delay_max,
+                        )
+                        drafts_today += 1
+                        if source == "ai":
+                            await queries.increment_stat(session, "ai_drafts", 1)
+                        else:
+                            await queries.increment_stat(session, "template_drafts", 1)
+                        log.info(
+                            "relevant_post_routed",
+                            channel=username,
+                            post_id=post.id,
+                            score=value,
+                            intent=intent,
+                            min_score=min_score,
+                            daily_draft_limit=limit,
+                            delay_min=delay_min,
+                            delay_max=delay_max,
+                        )
+                    elif status == "queued_by_limit":
+                        log.info(
+                            "post_queued_by_daily_limit",
+                            channel=username,
+                            post_id=post.id,
+                            score=value,
+                            intent=intent,
+                            daily_draft_limit=limit,
+                        )
+                    else:
+                        log.info(
+                            "post_saved_for_manual_review",
+                            channel=username,
+                            post_id=post.id,
+                            score=value,
+                            intent=intent,
+                            min_score=min_score,
+                        )
+                except Exception as error:
+                    log.warning("post_processing_failed", channel=username, message_id=message_id, error=str(error))
+                    await mark_processing_failed(
+                        session,
+                        channel_id=channel_id,
+                        tg_message_id=message_id,
+                        post_text=text,
+                        post_url=post_url,
+                        text_hash=hash_value,
+                        error=error,
                     )
-                else:
-                    log.info(
-                        "post_saved_for_manual_review",
-                        channel=username,
-                        post_id=post.id,
-                        score=value,
-                        intent=intent,
-                        min_score=min_score,
-                    )
+                    if self.runtime_ops:
+                        await self.runtime_ops.failure("parser", error, f"Ошибка обработки поста {username}/{message_id}")
+                    continue
         except FloodWaitError as error:
             log.warning("parser_flood_wait", channel=username, seconds=error.seconds)
             if self.runtime_ops:
