@@ -11,6 +11,7 @@ from core.config import Settings
 from db.models import Lead, ParsedPost, TargetChannel
 from services.ai import AIService
 from services.channel_cursor import advance_channel_cursor, iter_unseen_messages, reset_channel_cursor
+from services.channel_validation import is_channel_validation_fresh
 from services.failed_items import mark_processing_failed
 from services.parser import ParserService, current_day_start_utc, has_blocked_keyword, is_stale, split_csv, to_float
 from services.post_state import APPROVABLE_STATUSES, FINAL_OUTCOME_STATUSES, apply_result_once, can_approve, mark_reviewer_done_once, skip_post_once
@@ -43,6 +44,10 @@ def main() -> None:
     assert len(text_hash("Thailand relocation")) == 64
     assert TargetChannel.__tablename__ == "target_channels"
     assert hasattr(TargetChannel, "last_seen_message_id")
+    assert hasattr(TargetChannel, "last_validation_at")
+    assert hasattr(TargetChannel, "last_validation_error")
+    assert is_channel_validation_fresh(now, None, now=now)
+    assert not is_channel_validation_fresh(now, "ChannelPrivateError", now=now)
     assert ParsedPost.__tablename__ == "parsed_posts"
     assert Lead.__tablename__ == "leads"
     assert hasattr(Lead, "updated_at")
