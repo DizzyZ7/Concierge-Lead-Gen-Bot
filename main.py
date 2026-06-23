@@ -13,11 +13,12 @@ from db.session import create_engine, create_session_factory
 from services.ai import AIService
 from services.parser import ParserService
 from services.reviewer_dispatcher import ReviewerDispatcher
+from services.runtime_ops import RuntimeOps
 
 log = get_logger(__name__)
 
 
-async def build_parser(settings, session_factory, ai_service) -> tuple[TelegramClient | None, ParserService | None]:
+async def build_parser(settings, session_factory, ai_service, runtime_ops) -> tuple[TelegramClient | None, ParserService | None]:
     if not settings.parser_ready:
         return None, None
     session_path = Path("sessions") / settings.tg_session_name
@@ -25,9 +26,16 @@ async def build_parser(settings, session_factory, ai_service) -> tuple[TelegramC
     await client.connect()
     if not await client.is_user_authorized():
         log.warning("telegram_session_not_authorized", session=str(session_path))
+        await runtime_ops.failure("parser", RuntimeError("Telegram user session is not authorized"), str(session_path))
         await client.disconnect()
         return None, None
-    parser = ParserService(client=client, session_factory=session_factory, ai_service=ai_service, settings=settings)
+    parser = ParserService(
+        client=client,
+        session_factory=session_factory,
+        ai_service=ai_service,
+        settings=settings,
+        runtime_ops=runtime_ops,
+    )
     return client, parser
 
 
@@ -38,9 +46,15 @@ async def main() -> None:
     session_factory = create_session_factory(engine)
     bot = create_bot(settings)
     ai_service = AIService(settings)
+    runtime_ops = RuntimeOps(bot=bot, session_factory=session_factory, settings=settings)
     dispatcher = create_dispatcher(settings=settings, session_factory=session_factory, ai_service=ai_service)
-    reviewer = ReviewerDispatcher(bot=bot, session_factory=session_factory, settings=settings)
-    telegram_client, parser = await build_parser(settings, session_factory, ai_service)
+    reviewer = ReviewerDispatcher(
+        bot=bot,
+        session_factory=session_factory,
+        settings=settings,
+        runtime_ops=runtime_ops,
+    )
+    telegram_client, parser = await build_parser(settings, session_factory, ai_service, runtime_ops)
 
     scheduler = create_scheduler(settings)
     scheduler.add_job(reviewer.run_once, "interval", minutes=1, id="reviewer_dispatcher", max_instances=1, coalesce=True)
