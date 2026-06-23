@@ -22,6 +22,7 @@ async def render_launch_check(session_factory: async_sessionmaker[AsyncSession],
     db_ok = False
     paused = "unknown"
     active_channels = 0
+    unvalidated_channels = 0
     failed_items = 0
     queued_by_limit = 0
     parser_runtime: dict[str, str | None] = {}
@@ -36,6 +37,15 @@ async def render_launch_check(session_factory: async_sessionmaker[AsyncSession],
             active_channels = int(
                 await session.scalar(
                     select(func.count(TargetChannel.id)).where(TargetChannel.is_active.is_(True))
+                )
+                or 0
+            )
+            unvalidated_channels = int(
+                await session.scalar(
+                    select(func.count(TargetChannel.id)).where(
+                        TargetChannel.is_active.is_(True),
+                        TargetChannel.channel_title.is_(None),
+                    )
                 )
                 or 0
             )
@@ -60,9 +70,12 @@ async def render_launch_check(session_factory: async_sessionmaker[AsyncSession],
     parser_config_ok = settings.parser_enabled and settings.parser_ready
     reviewers_ok = bool(settings.reviewer_chat_ids)
     channels_ok = active_channels > 0
+    validation_ok = channels_ok and unvalidated_channels == 0
     unpaused_ok = paused != "true"
     failures_ok = failed_items == 0
-    required_ok = all([db_ok, parser_config_ok, reviewers_ok, channels_ok, unpaused_ok, failures_ok])
+    required_ok = all(
+        [db_ok, parser_config_ok, reviewers_ok, channels_ok, validation_ok, unpaused_ok, failures_ok]
+    )
 
     parser_heartbeat = parse_iso(parser_runtime.get("last_success_at"))
     reviewer_heartbeat = parse_iso(reviewer_runtime.get("last_success_at"))
@@ -78,6 +91,7 @@ async def render_launch_check(session_factory: async_sessionmaker[AsyncSession],
         f"{mark(parser_config_ok)} Parser: {'готов' if parser_config_ok else 'не настроен или выключен'}",
         f"{mark(reviewers_ok)} Reviewer-чаты: {len(settings.reviewer_chat_ids)}",
         f"{mark(channels_ok)} Активные каналы: {active_channels}",
+        f"{mark(validation_ok)} Валидация каналов: {'все подтверждены' if validation_ok else f'не подтверждено: {unvalidated_channels}'}",
         f"{mark(unpaused_ok)} Пауза: {'нет' if unpaused_ok else 'включена'}",
         f"{mark(failures_ok)} Ошибки обработки: {failed_items}",
         f"ℹ️ Очередь сверх дневного лимита: {queued_by_limit}",
