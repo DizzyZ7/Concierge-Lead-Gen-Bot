@@ -34,6 +34,10 @@ def runtime_key(component: str, field: str) -> str:
     return f"runtime.{component}.{field}"
 
 
+def needs_recovery_notification(last_success: datetime | None, last_error: datetime | None) -> bool:
+    return last_error is not None and (last_success is None or last_error >= last_success)
+
+
 class RuntimeOps:
     """Persists service health signals and sends rate-limited operator alerts."""
 
@@ -49,10 +53,20 @@ class RuntimeOps:
         self.settings = settings
 
     async def heartbeat(self, component: str, details: str = "") -> None:
+        recovered = False
+        timestamp = now_iso()
         async with self.session_factory() as session:
-            await queries.set_setting(session, runtime_key(component, "last_success_at"), now_iso())
+            previous_success = parse_iso(await queries.get_setting(session, runtime_key(component, "last_success_at")))
+            previous_error = parse_iso(await queries.get_setting(session, runtime_key(component, "last_error_at")))
+            recovered = needs_recovery_notification(previous_success, previous_error)
+            await queries.set_setting(session, runtime_key(component, "last_success_at"), timestamp)
             if details:
                 await queries.set_setting(session, runtime_key(component, "last_details"), details[:500])
+            if recovered:
+                await queries.set_setting(session, runtime_key(component, "last_recovered_at"), timestamp)
+
+        if recovered:
+            await self._send_recovery(component, details)
 
     async def failure(self, component: str, error: Exception, context: str = "") -> None:
         timestamp = now_iso()
@@ -83,6 +97,19 @@ class RuntimeOps:
                 await self.bot.send_message(admin_id, message, disable_web_page_preview=True)
             except Exception as alert_error:
                 log.warning("runtime_alert_send_failed", admin_id=admin_id, error=str(alert_error))
+
+    async def _send_recovery(self, component: str, details: str) -> None:
+        message = (
+            "<b>✅ Thailand Lead Radar: сервис восстановился</b>\n\n"
+            f"<b>Компонент:</b> {escape(component)}"
+        )
+        if details:
+            message += f"\n<b>Детали:</b> {escape(details[:500])}"
+        for admin_id in self.settings.admin_ids:
+            try:
+                await self.bot.send_message(admin_id, message, disable_web_page_preview=True)
+            except Exception as alert_error:
+                log.warning("runtime_recovery_alert_send_failed", admin_id=admin_id, error=str(alert_error))
 
 
 async def get_component_runtime_state(session: AsyncSession, component: str) -> dict[str, str | None]:
