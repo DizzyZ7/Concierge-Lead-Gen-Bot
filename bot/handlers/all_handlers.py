@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from aiogram import Router
 
-from bot.handlers import channels, dashboard, failed, leads, posts, reports, results, review_extras, saved, settings as settings_handlers, source_view, templates
+from bot.handlers import channels, dashboard, failed, launch_check, leads, posts, reports, results, review_extras, saved, settings as settings_handlers, source_view, templates
 
 
 def build_router() -> Router:
     router = Router(name="all_handlers")
     router.include_router(dashboard.router)
+    router.include_router(launch_check.router)
     router.include_router(channels.router)
     router.include_router(posts.router)
     router.include_router(review_extras.router)
