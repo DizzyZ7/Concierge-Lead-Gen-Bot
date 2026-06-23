@@ -5,9 +5,9 @@ from decimal import Decimal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from telethon import TelegramClient
 from telethon.errors import FloodWaitError
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from core.config import Settings
 from core.logger import get_logger
@@ -165,7 +165,7 @@ class ParserService:
                     continue
                 post_url = f"https://t.me/{username.lstrip('@')}/{message_id}"
                 try:
-                    score = await self.ai_service.score_post(text, geo)
+                    score = await self.ai_service.score_post(text, geo, session)
                     value = float(score.get("score", 0.5))
                     intent = str(score.get("intent", "unknown")).lower()
                     if allowed and intent not in allowed:
