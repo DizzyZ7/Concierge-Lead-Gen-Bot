@@ -13,6 +13,7 @@ def main_menu() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Одобренные", callback_data="nav:approved_queue")],
             [InlineKeyboardButton(text="Сверх дневного лимита", callback_data="nav:limit_queue")],
             [InlineKeyboardButton(text="Очередь reviewer-а", callback_data="nav:review_queue")],
+            [InlineKeyboardButton(text="Просроченные reviewer", callback_data="nav:reviewer_backlog")],
             [InlineKeyboardButton(text="Сохраненные", callback_data="nav:saved_queue")],
             [InlineKeyboardButton(text="Идеи", callback_data="nav:content_ideas")],
             [InlineKeyboardButton(text="Ошибки обработки", callback_data="nav:failed_queue")],
