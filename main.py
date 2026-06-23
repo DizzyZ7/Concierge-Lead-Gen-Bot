@@ -70,8 +70,8 @@ async def main() -> None:
         runtime_ops=runtime_ops,
     )
     telegram_client, parser = await build_parser(settings, session_factory, ai_service, runtime_ops)
-    dispatcher["parser_service"] = parser
-    dispatcher["limit_queue_promoter"] = limit_queue_promoter
+    dispatcher.workflow_data["parser_service"] = parser
+    dispatcher.workflow_data["limit_queue_promoter"] = limit_queue_promoter
 
     async def run_limit_queue_promoter() -> None:
         async with source_workflow_lock:
