@@ -3,11 +3,13 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from bot.handlers.all_handlers import build_router
+from bot.handlers.failed import router as failed_router
 from bot.main import create_bot, create_dispatcher
 from bot.presentation import intent_label, status_label
 from core.config import Settings
 from db.models import Lead, ParsedPost, TargetChannel
 from services.ai import AIService
+from services.failed_items import mark_processing_failed
 from services.parser import ParserService, current_day_start_utc, has_blocked_keyword, is_stale, split_csv, to_float
 from services.runtime_ops import RuntimeOps, parse_iso, runtime_key
 from services.text_tools import normalize_text, text_hash
@@ -26,6 +28,7 @@ def main() -> None:
     assert runtime_key("parser", "last_success_at") == "runtime.parser.last_success_at"
     assert intent_label("realty") == "Недвижимость"
     assert status_label("queued_by_limit") == "Отложено по дневному лимиту"
+    assert status_label("processing_failed") == "Ошибка обработки"
     assert normalize_text("HTTPS://t.me/test  Phuket!!!") == "phuket"
     assert len(text_hash("Thailand relocation")) == 64
     assert TargetChannel.__tablename__ == "target_channels"
@@ -34,6 +37,8 @@ def main() -> None:
     assert ParserService is not None
     assert AIService is not None
     assert RuntimeOps is not None
+    assert mark_processing_failed is not None
+    assert failed_router is not None
     assert Settings is not None
     assert create_bot is not None
     assert create_dispatcher is not None
