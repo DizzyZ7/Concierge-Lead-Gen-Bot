@@ -9,17 +9,21 @@ from core.config import Settings
 from db.models import Lead, ParsedPost, TargetChannel
 from services.ai import AIService
 from services.parser import ParserService, current_day_start_utc, has_blocked_keyword, is_stale, split_csv, to_float
+from services.runtime_ops import RuntimeOps, parse_iso, runtime_key
 from services.text_tools import normalize_text, text_hash
 
 
 def main() -> None:
+    now = datetime.now(timezone.utc)
     assert split_csv("realty, visa,realty") == {"realty", "visa"}
     assert has_blocked_keyword("Crypto offer", "casino,crypto")
     assert not has_blocked_keyword("Thailand apartment", "casino,crypto")
     assert to_float(None, 0.7) == 0.7
-    assert is_stale(datetime.now(timezone.utc) - timedelta(hours=25), 24)
-    assert not is_stale(datetime.now(timezone.utc) - timedelta(hours=23), 24)
+    assert is_stale(now - timedelta(hours=25), 24)
+    assert not is_stale(now - timedelta(hours=23), 24)
     assert current_day_start_utc("Asia/Bangkok").tzinfo == timezone.utc
+    assert parse_iso(now.isoformat()) == now
+    assert runtime_key("parser", "last_success_at") == "runtime.parser.last_success_at"
     assert intent_label("realty") == "Недвижимость"
     assert status_label("queued_by_limit") == "Отложено по дневному лимиту"
     assert normalize_text("HTTPS://t.me/test  Phuket!!!") == "phuket"
@@ -29,6 +33,7 @@ def main() -> None:
     assert Lead.__tablename__ == "leads"
     assert ParserService is not None
     assert AIService is not None
+    assert RuntimeOps is not None
     assert Settings is not None
     assert create_bot is not None
     assert create_dispatcher is not None
