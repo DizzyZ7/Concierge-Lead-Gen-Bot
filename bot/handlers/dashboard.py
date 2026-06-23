@@ -24,6 +24,7 @@ HELP_TEXT = """Команды
 /start
 /help
 /health
+/launch_check
 /stats
 /queue_stats
 /daily_report
@@ -31,9 +32,8 @@ HELP_TEXT = """Команды
 /settings
 /pause
 /resume
-/launch_check
 
-Каналы:
+Каналы и мониторинг:
 /channels
 /add_channel @manual thailand relocation
 /set_channel_limit 1 5
@@ -42,6 +42,8 @@ HELP_TEXT = """Команды
 /set_channel_intents 1 realty,visa,relocation
 /set_channel_blocklist 1 crypto,casino
 /reset_channel_cursor <channel_id>
+/scan_now
+/promote_limit_queue
 
 Посты:
 /add_item <channel_id> <url_or_dash> <text>
@@ -66,6 +68,10 @@ HELP_TEXT = """Команды
 /lead_status <lead_id> <new|contacted|converted|dead>
 /lead_note <lead_id> <text>
 /deal <lead_id> <commission_amount>
+
+Контекст услуг:
+/business_context
+/set_business_context <описание услуг>
 
 Шаблоны:
 /templates
