@@ -36,5 +36,5 @@ def create_dispatcher(
     middleware = AdminCheckMiddleware(settings)
     dispatcher.message.middleware(middleware)
     dispatcher.callback_query.middleware(middleware)
-    dispatcher.include_router(build_router())
+    dispatcher.include_router(build_router(settings))
     return dispatcher
