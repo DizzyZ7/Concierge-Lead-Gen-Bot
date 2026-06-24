@@ -11,11 +11,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.keyboards.inline import saved_actions
 from bot.presentation import intent_label
+from core.logger import get_logger
 from db import queries
 from db.models import Lead
+from services.post_audit import actor_from_user, record_post_action
 from services.post_state import apply_result_once, can_mark_as_lead
 
 router = Router(name=__name__)
+log = get_logger(__name__)
 
 RESULT_STATUS_MAP = {
     "commented": "commented",
@@ -57,6 +60,7 @@ async def mark_as_lead(session: AsyncSession, post_id: int) -> tuple[str, int | 
         if post.status != "lead":
             post.status = "lead"
             await session.commit()
+            return "updated", existing.id
         return "already", existing.id
 
     if not can_mark_as_lead(post.status):
@@ -80,6 +84,30 @@ async def mark_as_lead(session: AsyncSession, post_id: int) -> tuple[str, int | 
     await queries.increment_stat(session, "leads_received", 1)
     await session.refresh(lead)
     return "updated", lead.id
+
+
+async def audit_outcome(
+    session: AsyncSession,
+    *,
+    post_id: int,
+    result: str,
+    previous_status: str | None,
+    actor: CallbackQuery,
+    lead_id: int | None = None,
+) -> None:
+    try:
+        details = f"lead_id={lead_id}" if lead_id is not None else None
+        await record_post_action(
+            session,
+            post_id=post_id,
+            action=f"result:{result}",
+            previous_status=previous_status,
+            new_status=RESULT_STATUS_MAP[result],
+            actor=actor_from_user(actor.from_user),
+            details=details,
+        )
+    except Exception as error:
+        log.warning("post_action_audit_failed", post_id=post_id, action=result, error=str(error))
 
 
 async def send_content_ideas(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
@@ -113,9 +141,19 @@ async def result_callback(callback: CallbackQuery, session_factory: async_sessio
     result = parts[1]
     post_id = int(parts[2])
     async with session_factory() as session:
+        post = await queries.get_post_with_details(session, post_id)
+        previous_status = post.status if post else None
         if result == "lead":
             state, lead_id = await mark_as_lead(session, post_id)
             if state == "updated":
+                await audit_outcome(
+                    session,
+                    post_id=post_id,
+                    result=result,
+                    previous_status=previous_status,
+                    actor=callback,
+                    lead_id=lead_id,
+                )
                 label = f"Создан лид #{lead_id}"
             elif state == "already":
                 label = f"Лид #{lead_id} уже существует"
@@ -123,6 +161,14 @@ async def result_callback(callback: CallbackQuery, session_factory: async_sessio
                 label = state_feedback(state, RESULT_LABELS[result])
         else:
             state = await apply_result_once(session, post_id, RESULT_STATUS_MAP[result])
+            if state == "updated":
+                await audit_outcome(
+                    session,
+                    post_id=post_id,
+                    result=result,
+                    previous_status=previous_status,
+                    actor=callback,
+                )
             label = state_feedback(state, RESULT_LABELS[result])
     await callback.answer(label, show_alert=state in {"blocked", "missing"})
 
