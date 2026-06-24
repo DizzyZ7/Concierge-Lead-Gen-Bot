@@ -2,7 +2,26 @@ from __future__ import annotations
 
 from aiogram import Router
 
-from bot.handlers import channels, dashboard, failed, launch_check, leads, post_history, posts, report_access, reports, results, review_extras, reviewer_backlog_menu, saved, settings as settings_handlers, source_control, source_view, templates
+from bot.handlers import (
+    channels,
+    dashboard,
+    failed,
+    launch_check,
+    leads,
+    post_action_callbacks,
+    post_history,
+    posts,
+    report_access,
+    reports,
+    results,
+    review_extras,
+    reviewer_backlog_menu,
+    saved,
+    settings as settings_handlers,
+    source_control,
+    source_view,
+    templates,
+)
 from bot.middlewares.admin_only import AdminOnlyMiddleware
 from core.config import Settings
 
@@ -37,6 +56,7 @@ def build_router(settings: Settings | None = None) -> Router:
     router.include_router(launch_check.router)
     router.include_router(channels.router)
     router.include_router(source_control.router)
+    router.include_router(post_action_callbacks.router)
     router.include_router(posts.router)
     router.include_router(review_extras.router)
     router.include_router(reviewer_backlog_menu.router)
