@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from html import escape
-
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
@@ -13,14 +11,10 @@ from core.logger import get_logger
 from db import queries
 from services.post_audit import actor_from_user, record_post_action
 from services.post_state import save_post_once
+from services.reviewer_cards import escape_and_trim
 
 router = Router(name=__name__)
 log = get_logger(__name__)
-
-
-def cut(text: str | None, limit: int = 700) -> str:
-    value = text or ""
-    return value if len(value) <= limit else value[: limit - 1] + "..."
 
 
 def save_feedback(result: str) -> str:
@@ -44,14 +38,14 @@ async def send_saved_queue(message: Message, session_factory: async_sessionmaker
         score = f"{post.relevance_score:.2f}" if post.relevance_score is not None else "-"
         text = (
             f"Сохранено #{post.id}\n"
-            f"Канал: {escape(channel)}\n"
-            f"Категория: {escape(intent_label(post.intent))}\n"
-            f"Оценка: {escape(score)}\n"
-            f"Почему релевантно: {escape(post.relevance_reason or '-')}\n"
-            f"Кратко: {escape(post.content_summary or '-')}\n"
-            f"Как зайти в диалог: {escape(post.suggested_angle or '-')}\n"
-            f"Ссылка: {escape(post.post_url or '-')}\n\n"
-            f"Текст:\n{escape(cut(post.post_text))}"
+            f"Канал: {escape_and_trim(channel, 200)}\n"
+            f"Категория: {escape_and_trim(intent_label(post.intent), 100)}\n"
+            f"Оценка: {escape_and_trim(score, 32)}\n"
+            f"Почему релевантно: {escape_and_trim(post.relevance_reason or '-', 300)}\n"
+            f"Кратко: {escape_and_trim(post.content_summary or '-', 350)}\n"
+            f"Как зайти в диалог: {escape_and_trim(post.suggested_angle or '-', 350)}\n"
+            f"Ссылка: {escape_and_trim(post.post_url or '-', 500)}\n\n"
+            f"Текст:\n{escape_and_trim(post.post_text, 700)}"
         )
         await message.answer(text, reply_markup=saved_actions(post.id, post.post_url), disable_web_page_preview=True)
 
