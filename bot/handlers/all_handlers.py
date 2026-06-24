@@ -12,9 +12,8 @@ def protect_admin_router(router: Router, middleware: AdminOnlyMiddleware) -> Non
     router.callback_query.middleware(middleware)
 
 
-def build_router(settings: Settings | None = None) -> Router:
-    app_settings = settings or Settings()
-    admin_middleware = AdminOnlyMiddleware(app_settings)
+def build_router(settings: Settings) -> Router:
+    admin_middleware = AdminOnlyMiddleware(settings)
     for admin_router in (
         launch_check.router,
         channels.router,
