@@ -12,6 +12,23 @@ docker compose up -d --build
 
 When migrations are behind, the bot exits before Telegram polling and logs the exact revision mismatch. This prevents a partially running process against an outdated schema.
 
+## Reviewer delivery and access
+
+`REVIEWER_CHAT_IDS` controls where reviewer cards are delivered. It may contain a personal chat ID or a negative group/supergroup ID.
+
+`REVIEWER_USER_IDS` controls who may press reviewer buttons and use reviewer commands. It must contain only positive personal Telegram user IDs.
+
+For a personal reviewer chat, existing configuration remains compatible: a positive chat ID is treated as that user's ID when `REVIEWER_USER_IDS` is omitted.
+
+For a group delivery chat, add explicit users before launch:
+
+```text
+REVIEWER_CHAT_IDS=-1001234567890
+REVIEWER_USER_IDS=123456789,987654321
+```
+
+The bot never treats a negative group ID as a human user ID. `/launch_check` warns when a reviewer group is configured without authorized reviewer users.
+
 ## Daily checks
 
 ```text
@@ -24,7 +41,7 @@ When migrations are behind, the bot exits before Telegram polling and logs the e
 /followups
 ```
 
-`/health` must show live parser, reviewer, and daily-limit-queue heartbeats. A stale heartbeat or a recent error requires review before adding more sources.
+`/health` must show live parser, reviewer, daily-limit-queue, and source-validation heartbeats. A stale heartbeat or a recent error requires review before adding more sources.
 
 `/reviewer_backlog` shows cards that were already delivered to a reviewer but remain unresolved for more than 24 hours. It does not send reminders or change statuses automatically. Use `/reviewer_backlog 48` or another threshold when reviewing an older queue.
 
@@ -86,7 +103,7 @@ Read or clear it with:
 
 ## Error alerts
 
-Operational alerts are sent to `ADMIN_IDS` and rate-limited per component. The bot stores the last success time, details, and error in `app_settings`, so `/health` remains useful after a restart.
+Operational alerts are sent to `ADMIN_IDS` and rate-limited per component. When a failed component recovers, the bot sends one recovery notification. Runtime state is stored in `app_settings`, so `/health` remains useful after a restart.
 
 ## Failed items
 
@@ -120,7 +137,7 @@ After reset, run `/scan_now` to take a fresh bounded slice immediately. Existing
 
 1. Run `/health` and `/launch_check`.
 2. Run `/validate_channels` if source validation is missing, stale, or failed.
-3. Check `/reviewer_backlog`, `/failed_queue`, and recent parser, reviewer, or limit-queue error text.
+3. Check `/reviewer_backlog`, `/failed_queue`, and recent parser, reviewer, limit-queue, or source-validation error text.
 4. Inspect `docker compose logs --tail=200 bot`.
 5. Take a database backup before a code or migration rollback.
 6. Keep `OUTBOUND_ENABLED=false` until reviewer-first quality is stable.
