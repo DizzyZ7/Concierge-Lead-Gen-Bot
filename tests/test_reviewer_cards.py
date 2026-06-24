@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import unittest
 
-from services.reviewer_cards import render_reviewer_card, trim
+from services.reviewer_cards import escape_and_trim, render_reviewer_card
 
 
 class ReviewerCardTests(unittest.TestCase):
-    def test_trim_keeps_limit_and_marks_truncation(self) -> None:
-        self.assertEqual(trim("abc", 10), "abc")
-        self.assertEqual(trim("abcdef", 4), "abc...")
+    def test_escape_and_trim_preserves_complete_entities(self) -> None:
+        self.assertEqual(escape_and_trim("abc", 10), "abc")
+        self.assertEqual(escape_and_trim("<>&", 20), "&lt;&gt;&amp;")
+        truncated = escape_and_trim("&" * 20, 20)
+        self.assertLessEqual(len(truncated), 20)
+        self.assertTrue(truncated.endswith("..."))
+        self.assertNotIn("&am...", truncated)
 
     def test_card_escapes_untrusted_html_and_contains_context(self) -> None:
         card = render_reviewer_card(
@@ -30,6 +34,24 @@ class ReviewerCardTests(unittest.TestCase):
         self.assertIn("Нужно &lt;помочь&gt; &amp; проверить", card)
         self.assertIn("Напишите &lt;мне&gt; &amp; обсудим", card)
         self.assertIn("Оценка: 0.82", card)
+
+    def test_card_stays_bounded_with_special_character_heavy_input(self) -> None:
+        card = render_reviewer_card(
+            draft_id=1,
+            post_id=1,
+            channel="@channel",
+            url=None,
+            source_text="&" * 5000,
+            draft_text="<" * 5000,
+            score=None,
+            intent="unknown",
+            reason=None,
+            summary=None,
+            angle=None,
+        )
+        self.assertLess(len(card), 4096)
+        self.assertIn("&amp;", card)
+        self.assertIn("&lt;", card)
 
 
 if __name__ == "__main__":
