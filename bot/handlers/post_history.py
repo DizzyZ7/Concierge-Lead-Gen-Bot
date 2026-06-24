@@ -21,6 +21,8 @@ def action_label(action: str) -> str:
         "result:content_idea": "Сохранено как идея",
         "result:not_relevant": "Отмечено нерелевантным",
         "saved": "Сохранено",
+        "skipped": "Пропущено",
+        "reviewer_done": "Отмечено обработанным",
     }
     return labels.get(action, action)
 
