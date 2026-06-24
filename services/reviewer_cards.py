@@ -56,11 +56,7 @@ def render_reviewer_card(
     summary_text = escape_and_trim(fallback_text(summary, "Краткое резюме не сформировано."), 350)
     angle_text = escape_and_trim(fallback_text(angle, "Можно аккуратно зайти с полезным уточнением или советом."), 350)
     contact_note = contact_candidates_note(source_text)
-    contacts_line = (
-        f"Публичные контакты: {escape_and_trim(contact_note, 350)}\n"
-        if contact_note
-        else ""
-    )
+    contacts_line = f"{escape_and_trim(contact_note, 350)}\n" if contact_note else ""
     return (
         f"Лид-радар: пост #{post_id}\n"
         f"Черновик #{draft_id}\n"
