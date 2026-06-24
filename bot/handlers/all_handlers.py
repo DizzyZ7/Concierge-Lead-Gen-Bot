@@ -12,8 +12,14 @@ def protect_admin_router(router: Router, middleware: AdminOnlyMiddleware) -> Non
     router.callback_query.middleware(middleware)
 
 
-def build_router(settings: Settings) -> Router:
-    admin_middleware = AdminOnlyMiddleware(settings)
+def build_router(settings: Settings | None = None) -> Router:
+    # Production always passes the validated Settings object from create_dispatcher.
+    # The fallback keeps import-only smoke checks independent of real environment variables.
+    app_settings = settings or Settings.model_construct(
+        admin_ids_raw="",
+        reviewer_chat_ids_raw=None,
+    )
+    admin_middleware = AdminOnlyMiddleware(app_settings)
     for admin_router in (
         launch_check.router,
         channels.router,
