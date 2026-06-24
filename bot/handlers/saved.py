@@ -9,10 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.keyboards.inline import saved_actions
 from bot.presentation import intent_label
+from core.logger import get_logger
 from db import queries
+from services.post_audit import actor_from_user, record_post_action
 from services.post_state import save_post_once
 
 router = Router(name=__name__)
+log = get_logger(__name__)
 
 
 def cut(text: str | None, limit: int = 700) -> str:
@@ -57,7 +60,21 @@ async def send_saved_queue(message: Message, session_factory: async_sessionmaker
 async def save_post_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession]) -> None:
     post_id = int(callback.data.split(":")[-1])
     async with session_factory() as session:
+        post = await queries.get_post_with_details(session, post_id)
+        previous_status = post.status if post else None
         result = await save_post_once(session, post_id)
+        if result == "updated":
+            try:
+                await record_post_action(
+                    session,
+                    post_id=post_id,
+                    action="saved",
+                    previous_status=previous_status,
+                    new_status="saved",
+                    actor=actor_from_user(callback.from_user),
+                )
+            except Exception as error:
+                log.warning("post_action_audit_failed", post_id=post_id, action="saved", error=str(error))
     await callback.answer(save_feedback(result), show_alert=result in {"blocked", "missing"})
 
 
