@@ -56,6 +56,7 @@ class ParsedPost(Base):
     channel: Mapped[TargetChannel] = relationship(back_populates="posts")
     draft: Mapped[Optional["ReviewDraft"]] = relationship(back_populates="post", cascade="all, delete-orphan")
     leads: Mapped[list["Lead"]] = relationship(back_populates="source_post")
+    actions: Mapped[list["PostAction"]] = relationship(back_populates="post", cascade="all, delete-orphan")
 
 
 class ReviewDraft(Base):
@@ -73,6 +74,23 @@ class ReviewDraft(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     post: Mapped[ParsedPost] = relationship(back_populates="draft")
+
+
+class PostAction(Base):
+    __tablename__ = "post_actions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    post_id: Mapped[int] = mapped_column(ForeignKey("parsed_posts.id", ondelete="CASCADE"), nullable=False, index=True)
+    action: Mapped[str] = mapped_column(String(80), nullable=False)
+    previous_status: Mapped[str | None] = mapped_column(Text)
+    new_status: Mapped[str | None] = mapped_column(Text)
+    actor_user_id: Mapped[int | None] = mapped_column(BigInteger)
+    actor_username: Mapped[str | None] = mapped_column(String(128))
+    actor_name: Mapped[str | None] = mapped_column(String(256))
+    details: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    post: Mapped[ParsedPost] = relationship(back_populates="actions")
 
 
 class Lead(Base):
