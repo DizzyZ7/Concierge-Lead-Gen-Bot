@@ -20,6 +20,7 @@ def build_router(settings: Settings | None = None) -> Router:
         channels.router,
         source_control.router,
         failed.router,
+        leads.router,
         templates.router,
         settings_handlers.router,
     ):
