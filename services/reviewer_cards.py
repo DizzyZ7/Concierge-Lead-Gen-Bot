@@ -3,7 +3,7 @@ from __future__ import annotations
 from html import escape
 
 from bot.presentation import intent_label
-
+from services.contact_candidates import contact_candidates_note
 
 ELLIPSIS = "..."
 
@@ -55,6 +55,12 @@ def render_reviewer_card(
     reason_text = escape_and_trim(fallback_text(reason, "Пост отмечен как потенциально полезный."), 300)
     summary_text = escape_and_trim(fallback_text(summary, "Краткое резюме не сформировано."), 350)
     angle_text = escape_and_trim(fallback_text(angle, "Можно аккуратно зайти с полезным уточнением или советом."), 350)
+    contact_note = contact_candidates_note(source_text)
+    contacts_line = (
+        f"Публичные контакты: {escape_and_trim(contact_note, 350)}\n"
+        if contact_note
+        else ""
+    )
     return (
         f"Лид-радар: пост #{post_id}\n"
         f"Черновик #{draft_id}\n"
@@ -64,7 +70,8 @@ def render_reviewer_card(
         f"Почему релевантно: {reason_text}\n"
         f"Кратко: {summary_text}\n"
         f"Как зайти в диалог: {angle_text}\n"
-        f"Ссылка: {escape_and_trim(url or '-', 500)}\n\n"
+        f"Ссылка: {escape_and_trim(url or '-', 500)}\n"
+        f"{contacts_line}\n"
         f"Текст источника:\n{source}\n\n"
         f"Черновик комментария:\n<code>{draft}</code>"
     )
