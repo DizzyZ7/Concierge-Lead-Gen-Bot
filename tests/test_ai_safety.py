@@ -34,6 +34,25 @@ class AISafetyTests(unittest.TestCase):
         neutral_score = AIService._fallback_score("Ищу район для жизни", "thailand")["score"]
         self.assertGreater(thailand_score, neutral_score)
 
+    def test_circuit_breaker_opens_after_failure_and_resets_after_success(self) -> None:
+        service = object.__new__(AIService)
+        service.client = object()
+        service._claude_failure_streak = 0
+        service._claude_disabled_until = 0.0
+
+        first_cooldown = service._register_claude_failure()
+        self.assertEqual(first_cooldown, 30)
+        self.assertTrue(service.claude_circuit_open)
+        self.assertFalse(service._can_call_claude())
+
+        second_cooldown = service._register_claude_failure()
+        self.assertEqual(second_cooldown, 60)
+
+        service._register_claude_success()
+        self.assertEqual(service._claude_failure_streak, 0)
+        self.assertFalse(service.claude_circuit_open)
+        self.assertTrue(service._can_call_claude())
+
 
 if __name__ == "__main__":
     unittest.main()
