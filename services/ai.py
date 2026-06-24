@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import random
+from time import monotonic
 from typing import Any
 
 from anthropic import AsyncAnthropic
@@ -30,6 +31,8 @@ MAX_REASON_CHARS = 320
 MAX_SUMMARY_CHARS = 500
 MAX_ANGLE_CHARS = 500
 MAX_DRAFT_CHARS = 900
+CLAUDE_FAILURE_BASE_COOLDOWN_SECONDS = 30
+CLAUDE_FAILURE_MAX_COOLDOWN_SECONDS = 300
 
 GEO_ALIASES: dict[str, tuple[str, ...]] = {
     "thailand": (
@@ -91,6 +94,28 @@ class AIService:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.client = AsyncAnthropic(api_key=settings.anthropic_api_key) if settings.claude_ready else None
+        self._claude_failure_streak = 0
+        self._claude_disabled_until = 0.0
+
+    @property
+    def claude_circuit_open(self) -> bool:
+        return self.client is not None and monotonic() < self._claude_disabled_until
+
+    def _can_call_claude(self) -> bool:
+        return self.client is not None and not self.claude_circuit_open
+
+    def _register_claude_success(self) -> None:
+        self._claude_failure_streak = 0
+        self._claude_disabled_until = 0.0
+
+    def _register_claude_failure(self) -> int:
+        self._claude_failure_streak = min(self._claude_failure_streak + 1, 5)
+        cooldown = min(
+            CLAUDE_FAILURE_BASE_COOLDOWN_SECONDS * (2 ** (self._claude_failure_streak - 1)),
+            CLAUDE_FAILURE_MAX_COOLDOWN_SECONDS,
+        )
+        self._claude_disabled_until = monotonic() + cooldown
+        return cooldown
 
     async def score_post(
         self,
@@ -100,7 +125,7 @@ class AIService:
     ) -> dict[str, Any]:
         """Score source text relevance for the concierge workflow."""
         business_context = await self._business_context(db_session)
-        if self.client:
+        if self._can_call_claude():
             try:
                 prompt = (
                     "Return compact JSON only with fields: score, intent, reason, summary, angle. "
@@ -116,6 +141,7 @@ class AIService:
                 )
                 raw = await self._claude(prompt, 320, temperature=0.35)
                 parsed = self._parse_json(raw)
+                self._register_claude_success()
                 return {
                     "score": max(0.0, min(float(parsed.get("score", 0.5)), 1.0)),
                     "intent": self._safe_intent(parsed.get("intent")),
@@ -136,7 +162,8 @@ class AIService:
                     ),
                 }
             except Exception as error:
-                log.warning("claude_score_failed", error=str(error))
+                cooldown = self._register_claude_failure()
+                log.warning("claude_score_failed", error=str(error), cooldown_seconds=cooldown)
                 if db_session is not None:
                     try:
                         await queries.increment_ai_failure(db_session)
@@ -148,7 +175,7 @@ class AIService:
         """Generate a short draft for a human reviewer."""
         business_context = await self._business_context(db_session)
         safe_intent = self._safe_intent(intent)
-        if self.client:
+        if self._can_call_claude():
             try:
                 style = random.choice(COMMENT_STYLES)
                 prompt = (
@@ -168,9 +195,11 @@ class AIService:
                     MAX_DRAFT_CHARS,
                 )
                 if len(text) >= 10:
+                    self._register_claude_success()
                     return text, "ai"
             except Exception as error:
-                log.warning("claude_draft_failed", error=str(error))
+                cooldown = self._register_claude_failure()
+                log.warning("claude_draft_failed", error=str(error), cooldown_seconds=cooldown)
                 await queries.increment_ai_failure(db_session)
         template = await queries.get_random_template(db_session, geo, safe_intent)
         if template:
