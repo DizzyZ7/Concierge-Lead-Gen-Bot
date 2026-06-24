@@ -4,16 +4,27 @@ import random
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Sequence
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from core.config import get_settings
 from db.models import AppSetting, DailyStat, DraftTemplate, Lead, ParsedPost, ReviewDraft, TargetChannel
 
 
+def business_today() -> date:
+    """Return the current date in the configured business timezone."""
+    try:
+        local_zone = ZoneInfo(get_settings().timezone)
+    except ZoneInfoNotFoundError:
+        local_zone = timezone.utc
+    return datetime.now(local_zone).date()
+
+
 async def get_today_stats(session: AsyncSession) -> DailyStat:
-    today = date.today()
+    today = business_today()
     row = await session.scalar(select(DailyStat).where(DailyStat.date == today))
     if row:
         return row
@@ -320,7 +331,7 @@ async def list_content_ideas(session: AsyncSession, limit: int = 20) -> Sequence
 
 
 async def count_drafts_today(session: AsyncSession, channel_id: int | None = None) -> int:
-    today = date.today()
+    today = business_today()
     stmt = select(func.count(ReviewDraft.id)).join(ReviewDraft.post).where(func.date(ReviewDraft.created_at) == today)
     if channel_id is not None:
         stmt = stmt.where(ParsedPost.channel_id == channel_id)
