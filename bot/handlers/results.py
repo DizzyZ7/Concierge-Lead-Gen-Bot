@@ -14,6 +14,7 @@ from bot.presentation import intent_label
 from core.logger import get_logger
 from db import queries
 from db.models import Lead
+from services.contact_candidates import contact_candidates_note
 from services.post_audit import actor_from_user, record_post_action
 from services.post_state import apply_result_once, can_mark_as_lead
 
@@ -50,6 +51,12 @@ def state_feedback(result: str, success: str) -> str:
     return "Пост не найден."
 
 
+def initial_lead_notes(post_id: int, source_text: str | None) -> str:
+    base = f"Лид из Lead Radar, источник #{post_id}. Контактные данные нужно заполнить после прямого ответа."
+    contacts = contact_candidates_note(source_text)
+    return f"{base}\n{contacts}" if contacts else base
+
+
 async def mark_as_lead(session: AsyncSession, post_id: int) -> tuple[str, int | None]:
     post = await queries.get_post_with_details(session, post_id)
     if not post:
@@ -70,7 +77,7 @@ async def mark_as_lead(session: AsyncSession, post_id: int) -> tuple[str, int | 
         source_post_id=post.id,
         geo=post.channel.geo if post.channel else None,
         intent=post.intent,
-        notes=f"Лид из Lead Radar, источник #{post.id}. Контактные данные нужно заполнить после прямого ответа.",
+        notes=initial_lead_notes(post.id, post.post_text),
     )
     session.add(lead)
     post.status = "lead"
