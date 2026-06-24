@@ -18,7 +18,7 @@ from services.runtime_ops import get_component_runtime_state, parse_iso
 
 router = Router(name=__name__)
 
-HELP_TEXT = """Команды
+ADMIN_HELP_TEXT = """Команды администратора
 
 Основное:
 /start
@@ -81,6 +81,32 @@ HELP_TEXT = """Команды
 /add_template <geo> <category> <text>
 /disable_template <template_id>
 """
+
+REVIEWER_HELP_TEXT = """Команды reviewer-а
+
+Рабочие очереди:
+/start
+/help
+/stats
+/daily_report
+/pending
+/approved_queue
+/review_queue
+/reviewer_backlog [hours]
+/saved_queue
+/content_ideas
+/source <post_id>
+/draft <post_id>
+/edit_draft <post_id> <new text>
+
+По карточкам можно отметить: комментарий написан, стал лидом, идея, нерелевантно, сохранить, пропустить или обработано.
+
+Настройки каналов, запуск parser-а, системные операции, CRM-лиды и финансы доступны администратору.
+"""
+
+
+def is_admin_user(user_id: int | None, settings: Settings) -> bool:
+    return user_id is not None and user_id in settings.admin_ids
 
 
 def local_zone(timezone_name: str):
@@ -165,13 +191,17 @@ def parser_config_state(settings: Settings) -> str:
 
 
 @router.message(Command("start"))
-async def start_command(message: Message) -> None:
-    await message.answer("Thailand Lead Radar готов к работе.", reply_markup=main_menu())
+async def start_command(message: Message, settings: Settings) -> None:
+    await message.answer(
+        "Thailand Lead Radar готов к работе.",
+        reply_markup=main_menu(is_admin=is_admin_user(message.from_user.id if message.from_user else None, settings)),
+    )
 
 
 @router.message(Command("help"))
-async def help_command(message: Message) -> None:
-    await message.answer(HELP_TEXT)
+async def help_command(message: Message, settings: Settings) -> None:
+    is_admin = is_admin_user(message.from_user.id if message.from_user else None, settings)
+    await message.answer(ADMIN_HELP_TEXT if is_admin else REVIEWER_HELP_TEXT)
 
 
 @router.message(Command("health"))
@@ -232,8 +262,15 @@ async def health_command(
 
 
 @router.message(Command("stats"))
-async def stats_command(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
-    await message.answer(await render_dashboard(session_factory), reply_markup=main_menu())
+async def stats_command(
+    message: Message,
+    session_factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
+) -> None:
+    await message.answer(
+        await render_dashboard(session_factory),
+        reply_markup=main_menu(is_admin=is_admin_user(message.from_user.id if message.from_user else None, settings)),
+    )
 
 
 @router.message(Command("queue_stats"))
@@ -242,6 +279,13 @@ async def queue_stats_command(message: Message, session_factory: async_sessionma
 
 
 @router.callback_query(F.data == "nav:dashboard")
-async def dashboard_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession]) -> None:
+async def dashboard_callback(
+    callback: CallbackQuery,
+    session_factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
+) -> None:
     await callback.answer()
-    await callback.message.answer(await render_dashboard(session_factory), reply_markup=main_menu())
+    await callback.message.answer(
+        await render_dashboard(session_factory),
+        reply_markup=main_menu(is_admin=is_admin_user(callback.from_user.id if callback.from_user else None, settings)),
+    )
