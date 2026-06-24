@@ -7,13 +7,14 @@ from aiogram import BaseMiddleware
 from aiogram.types import CallbackQuery, Message, TelegramObject
 
 from core.config import Settings
+from core.reviewer_access import allowed_operator_ids
 
 
 class AdminCheckMiddleware(BaseMiddleware):
-    """Allow only configured owners and reviewers to use the bot."""
+    """Allow only configured owners and authorized reviewer users to use the bot."""
 
     def __init__(self, settings: Settings) -> None:
-        self.allowed_ids = settings.admin_ids | settings.reviewer_chat_ids
+        self.allowed_ids = allowed_operator_ids(settings)
 
     async def __call__(
         self,
