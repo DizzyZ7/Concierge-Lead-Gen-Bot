@@ -137,6 +137,11 @@ class AIService:
                 }
             except Exception as error:
                 log.warning("claude_score_failed", error=str(error))
+                if db_session is not None:
+                    try:
+                        await queries.increment_ai_failure(db_session)
+                    except Exception as stats_error:
+                        log.warning("claude_score_failure_stat_failed", error=str(stats_error))
         return self._fallback_score(post_text, geo)
 
     async def generate_draft(self, post_text: str, geo: str, intent: str, db_session: AsyncSession) -> tuple[str, str]:
