@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from html import escape
 
 from aiogram import F, Router
 from aiogram.filters import Command
@@ -13,13 +12,9 @@ from bot.presentation import intent_label
 from core.config import Settings
 from db import queries
 from services.ai import AIService
+from services.reviewer_cards import escape_and_trim
 
 router = Router(name=__name__)
-
-
-def cut(value: str | None, limit: int = 700) -> str:
-    text = value or ""
-    return text if len(text) <= limit else text[: limit - 1] + "..."
 
 
 def channel_min_score(value: Decimal | float | int | None, default: float) -> float:
@@ -36,10 +31,10 @@ async def send_failed_queue(message: Message, session_factory: async_sessionmake
         channel = post.channel.channel_username if post.channel else "неизвестно"
         text = (
             f"Ошибка обработки: пост #{post.id}\n"
-            f"Канал: {escape(channel)}\n"
-            f"Причина: {escape(post.relevance_reason or '-')}\n"
-            f"Ссылка: {escape(post.post_url or '-')}\n\n"
-            f"Текст:\n{escape(cut(post.post_text))}"
+            f"Канал: {escape_and_trim(channel, 200)}\n"
+            f"Причина: {escape_and_trim(post.relevance_reason or '-', 500)}\n"
+            f"Ссылка: {escape_and_trim(post.post_url or '-', 500)}\n\n"
+            f"Текст:\n{escape_and_trim(post.post_text, 700)}"
         )
         await message.answer(text, reply_markup=failed_actions(post.id, post.post_url), disable_web_page_preview=True)
 
@@ -83,7 +78,7 @@ async def retry_failed_callback(
                 await session.commit()
                 await callback.message.edit_text(
                     f"Пост #{post.id} повторно обработан и возвращен на ручную проверку.\n"
-                    f"Категория: {escape(intent_label(intent))}\n"
+                    f"Категория: {escape_and_trim(intent_label(intent), 100)}\n"
                     f"Оценка: {value:.2f}"
                 )
                 await callback.answer("Повторная обработка выполнена")
@@ -102,10 +97,8 @@ async def retry_failed_callback(
                 await queries.increment_stat(session, "ai_drafts", 1)
             else:
                 await queries.increment_stat(session, "template_drafts", 1)
-        await callback.message.edit_text(
-            f"Пост #{post_id} повторно обработан и отправлен в reviewer pipeline."
-        )
+        await callback.message.edit_text(f"Пост #{post_id} повторно обработан и отправлен в reviewer pipeline.")
         await callback.answer("Повторная обработка выполнена")
     except Exception as error:
         await callback.answer("Повторная обработка не удалась", show_alert=True)
-        await callback.message.answer(f"Ошибка повторной обработки: {escape(error.__class__.__name__)}")
+        await callback.message.answer(f"Ошибка повторной обработки: {escape_and_trim(error.__class__.__name__, 120)}")
