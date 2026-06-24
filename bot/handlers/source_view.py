@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from html import escape
-
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
@@ -9,13 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.presentation import intent_label, status_label
 from db import queries
+from services.reviewer_cards import escape_and_trim
 
 router = Router(name=__name__)
-
-
-def cut(text: str | None, limit: int = 1800) -> str:
-    value = text or ""
-    return value if len(value) <= limit else value[: limit - 1] + "..."
 
 
 def render_source(post) -> str:
@@ -23,15 +17,15 @@ def render_source(post) -> str:
     score = f"{post.relevance_score:.2f}" if post.relevance_score is not None else "-"
     return (
         f"Источник #{post.id}\n"
-        f"Статус: {escape(status_label(post.status))}\n"
-        f"Канал: {escape(channel)}\n"
-        f"Категория: {escape(intent_label(post.intent))}\n"
-        f"Оценка: {escape(score)}\n"
-        f"Почему релевантно: {escape(post.relevance_reason or '-')}\n"
-        f"Кратко: {escape(post.content_summary or '-')}\n"
-        f"Как зайти в диалог: {escape(post.suggested_angle or '-')}\n"
-        f"Ссылка: {escape(post.post_url or '-')}\n\n"
-        f"Текст:\n{escape(cut(post.post_text))}"
+        f"Статус: {escape_and_trim(status_label(post.status), 100)}\n"
+        f"Канал: {escape_and_trim(channel, 200)}\n"
+        f"Категория: {escape_and_trim(intent_label(post.intent), 100)}\n"
+        f"Оценка: {escape_and_trim(score, 32)}\n"
+        f"Почему релевантно: {escape_and_trim(post.relevance_reason or '-', 300)}\n"
+        f"Кратко: {escape_and_trim(post.content_summary or '-', 350)}\n"
+        f"Как зайти в диалог: {escape_and_trim(post.suggested_angle or '-', 350)}\n"
+        f"Ссылка: {escape_and_trim(post.post_url or '-', 500)}\n\n"
+        f"Текст:\n{escape_and_trim(post.post_text, 1600)}"
     )
 
 
