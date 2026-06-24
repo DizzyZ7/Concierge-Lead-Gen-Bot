@@ -7,6 +7,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from core.config import Settings
+from core.reviewer_access import reviewer_user_ids
 from db import queries
 from db.models import ParsedPost, TargetChannel
 from services.channel_validation import is_channel_validation_fresh
@@ -73,12 +74,24 @@ async def render_launch_check(session_factory: async_sessionmaker[AsyncSession],
 
     parser_config_ok = settings.parser_enabled and settings.parser_ready
     reviewers_ok = bool(settings.reviewer_chat_ids)
+    reviewer_users = reviewer_user_ids(settings)
+    group_delivery_enabled = any(chat_id < 0 for chat_id in settings.reviewer_chat_ids)
+    reviewer_access_ok = not group_delivery_enabled or bool(reviewer_users)
     channels_ok = active_channels > 0
     validation_ok = channels_ok and unvalidated_channels == 0
     unpaused_ok = paused != "true"
     failures_ok = failed_items == 0
     required_ok = all(
-        [db_ok, parser_config_ok, reviewers_ok, channels_ok, validation_ok, unpaused_ok, failures_ok]
+        [
+            db_ok,
+            parser_config_ok,
+            reviewers_ok,
+            reviewer_access_ok,
+            channels_ok,
+            validation_ok,
+            unpaused_ok,
+            failures_ok,
+        ]
     )
 
     parser_heartbeat = parse_iso(parser_runtime.get("last_success_at"))
@@ -87,6 +100,11 @@ async def render_launch_check(session_factory: async_sessionmaker[AsyncSession],
     parser_heartbeat_text = parser_heartbeat.strftime("%d.%m %H:%M UTC") if parser_heartbeat else "еще нет"
     reviewer_heartbeat_text = reviewer_heartbeat.strftime("%d.%m %H:%M UTC") if reviewer_heartbeat else "еще нет"
     limit_queue_heartbeat_text = limit_queue_heartbeat.strftime("%d.%m %H:%M UTC") if limit_queue_heartbeat else "еще нет"
+    reviewer_access_text = (
+        f"пользователей: {len(reviewer_users)}"
+        if reviewer_access_ok
+        else "для group-chat добавь REVIEWER_USER_IDS"
+    )
 
     lines = [
         "✅ Можно запускать" if required_ok else "⚠️ Перед запуском нужно исправить пункты ниже",
@@ -94,6 +112,7 @@ async def render_launch_check(session_factory: async_sessionmaker[AsyncSession],
         f"{mark(db_ok)} База данных: {'доступна' if db_ok else 'недоступна'}",
         f"{mark(parser_config_ok)} Parser: {'готов' if parser_config_ok else 'не настроен или выключен'}",
         f"{mark(reviewers_ok)} Reviewer-чаты: {len(settings.reviewer_chat_ids)}",
+        f"{mark(reviewer_access_ok)} Reviewer-доступ: {reviewer_access_text}",
         f"{mark(channels_ok)} Активные каналы: {active_channels}",
         f"{mark(validation_ok)} Валидация каналов: {'все свежие' if validation_ok else f'требуют проверки: {unvalidated_channels}'}",
         f"{mark(unpaused_ok)} Пауза: {'нет' if unpaused_ok else 'включена'}",
