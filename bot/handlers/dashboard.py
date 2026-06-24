@@ -139,9 +139,20 @@ def format_runtime_component(name: str, state: dict[str, str | None], stale_afte
     return "\n".join(lines), stale
 
 
-async def render_dashboard(session_factory: async_sessionmaker[AsyncSession]) -> str:
+async def render_dashboard(session_factory: async_sessionmaker[AsyncSession], *, is_admin: bool) -> str:
     async with session_factory() as session:
         stats = await queries.get_today_stats(session)
+
+    if not is_admin:
+        return (
+            "Рабочая сводка за сегодня\n\n"
+            f"Обработано постов: {stats.posts_parsed}\n"
+            f"Карточек отправлено reviewer-ам: {stats.drafts_sent}\n"
+            f"Отмечено обработанными: {stats.reviewer_done}\n"
+            f"AI-черновиков: {stats.ai_drafts}\n"
+            f"Шаблонных черновиков: {stats.template_drafts}"
+        )
+
     return (
         "Главная за сегодня\n\n"
         f"Обработано постов: {stats.posts_parsed}\n"
@@ -192,10 +203,8 @@ def parser_config_state(settings: Settings) -> str:
 
 @router.message(Command("start"))
 async def start_command(message: Message, settings: Settings) -> None:
-    await message.answer(
-        "Thailand Lead Radar готов к работе.",
-        reply_markup=main_menu(is_admin=is_admin_user(message.from_user.id if message.from_user else None, settings)),
-    )
+    is_admin = is_admin_user(message.from_user.id if message.from_user else None, settings)
+    await message.answer("Thailand Lead Radar готов к работе.", reply_markup=main_menu(is_admin=is_admin))
 
 
 @router.message(Command("help"))
@@ -210,6 +219,9 @@ async def health_command(
     session_factory: async_sessionmaker[AsyncSession],
     settings: Settings,
 ) -> None:
+    if not is_admin_user(message.from_user.id if message.from_user else None, settings):
+        await message.answer("Проверка здоровья системы доступна только администратору.")
+        return
     try:
         zone = local_zone(settings.timezone)
         async with session_factory() as session:
@@ -267,14 +279,19 @@ async def stats_command(
     session_factory: async_sessionmaker[AsyncSession],
     settings: Settings,
 ) -> None:
-    await message.answer(
-        await render_dashboard(session_factory),
-        reply_markup=main_menu(is_admin=is_admin_user(message.from_user.id if message.from_user else None, settings)),
-    )
+    is_admin = is_admin_user(message.from_user.id if message.from_user else None, settings)
+    await message.answer(await render_dashboard(session_factory, is_admin=is_admin), reply_markup=main_menu(is_admin=is_admin))
 
 
 @router.message(Command("queue_stats"))
-async def queue_stats_command(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
+async def queue_stats_command(
+    message: Message,
+    session_factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
+) -> None:
+    if not is_admin_user(message.from_user.id if message.from_user else None, settings):
+        await message.answer("Статистика статусов очередей доступна только администратору.")
+        return
     await message.answer(await render_queue_stats(session_factory))
 
 
@@ -285,7 +302,5 @@ async def dashboard_callback(
     settings: Settings,
 ) -> None:
     await callback.answer()
-    await callback.message.answer(
-        await render_dashboard(session_factory),
-        reply_markup=main_menu(is_admin=is_admin_user(callback.from_user.id if callback.from_user else None, settings)),
-    )
+    is_admin = is_admin_user(callback.from_user.id if callback.from_user else None, settings)
+    await callback.message.answer(await render_dashboard(session_factory, is_admin=is_admin), reply_markup=main_menu(is_admin=is_admin))
