@@ -9,7 +9,10 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from bot.keyboards.inline import main_menu
 from bot.presentation import intent_label, status_label
+from bot.ui import edit_callback_message
+from core.config import Settings
 from db.models import ParsedPost, TargetChannel
 
 router = Router(name=__name__)
@@ -32,6 +35,10 @@ CONFIRMED_OUTCOME_STATUSES = {"lead", "commented"}
 WORKING_SIGNAL_STATUSES = {"content_idea", "saved", "reviewer_done"}
 BAD_STATUSES = {"not_relevant", "skipped"}
 OPEN_STATUSES = {"pending", "approved", "queued_by_limit", "sent_to_reviewer"}
+
+
+def is_admin_user(user_id: int | None, settings: Settings) -> bool:
+    return user_id is not None and user_id in settings.admin_ids
 
 
 def clamp_days(value: str | None, default: int = 7) -> int:
@@ -246,12 +253,17 @@ async def source_quality_command(message: Message, session_factory: async_sessio
 
 
 @router.callback_query(F.data == "nav:daily_report")
-async def daily_report_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession]) -> None:
+async def daily_report_callback(
+    callback: CallbackQuery,
+    session_factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
+) -> None:
     await callback.answer()
-    await callback.message.answer(await render_daily_report(session_factory))
+    is_admin = is_admin_user(callback.from_user.id if callback.from_user else None, settings)
+    await edit_callback_message(callback, await render_daily_report(session_factory), reply_markup=main_menu(is_admin=is_admin))
 
 
 @router.callback_query(F.data == "nav:channel_stats")
 async def channel_stats_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession]) -> None:
     await callback.answer()
-    await callback.message.answer(await render_channel_stats(session_factory))
+    await edit_callback_message(callback, await render_channel_stats(session_factory), reply_markup=main_menu(is_admin=True))

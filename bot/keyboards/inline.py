@@ -112,5 +112,15 @@ def channel_actions(channel_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="Вкл./выкл. мониторинг", callback_data=f"channel:toggle:{channel_id}")],
+            [InlineKeyboardButton(text="К списку каналов", callback_data="nav:channels")],
+            [InlineKeyboardButton(text="Главная", callback_data="nav:dashboard")],
         ]
     )
+
+
+def channels_menu(channel_ids: list[int]) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    for channel_id in channel_ids:
+        rows.append([InlineKeyboardButton(text=f"Канал #{channel_id}", callback_data=f"channel:view:{channel_id}")])
+    rows.append([InlineKeyboardButton(text="Главная", callback_data="nav:dashboard")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
