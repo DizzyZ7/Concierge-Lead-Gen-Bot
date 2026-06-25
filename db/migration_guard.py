@@ -6,7 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-REQUIRED_ALEMBIC_REVISION: Final = "0009_post_action_audit"
+REQUIRED_ALEMBIC_REVISION: Final = "0010_reviewer_claims"
 
 
 class SchemaNotReadyError(RuntimeError):
