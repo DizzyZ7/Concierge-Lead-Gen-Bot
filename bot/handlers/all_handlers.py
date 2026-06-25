@@ -17,6 +17,7 @@ from bot.handlers import (
     review_extras,
     reviewer_backlog_menu,
     reviewer_claims,
+    reviewer_queue,
     saved,
     settings as settings_handlers,
     source_control,
@@ -75,6 +76,7 @@ def build_router(settings: Settings | None = None) -> Router:
     router.include_router(source_control.router)
     router.include_router(reviewer_claims.router)
     router.include_router(post_action_callbacks.router)
+    router.include_router(reviewer_queue.router)
     router.include_router(posts.router)
     router.include_router(review_extras.router)
     router.include_router(reviewer_backlog_menu.router)
