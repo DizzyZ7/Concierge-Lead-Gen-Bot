@@ -7,6 +7,8 @@ from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from bot.keyboards.inline import main_menu
+from bot.ui import edit_callback_message
 from db import queries
 
 router = Router(name=__name__)
@@ -20,10 +22,14 @@ def normalize_context(value: str) -> str:
 
 
 async def send_settings(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    await message.answer(await render_settings(session_factory))
+
+
+async def render_settings(session_factory: async_sessionmaker[AsyncSession]) -> str:
     async with session_factory() as session:
         paused = await queries.get_setting(session, "paused", "false")
         business_context = await queries.get_setting(session, BUSINESS_CONTEXT_KEY, "")
-    await message.answer(
+    return (
         "Настройки\n\n"
         f"Пауза: {'да' if paused == 'true' else 'нет'}\n"
         "Режим: reviewer-first\n"
@@ -40,7 +46,7 @@ async def settings_command(message: Message, session_factory: async_sessionmaker
 @router.callback_query(F.data == "nav:settings")
 async def settings_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession]) -> None:
     await callback.answer()
-    await send_settings(callback.message, session_factory)
+    await edit_callback_message(callback, await render_settings(session_factory), reply_markup=main_menu(is_admin=True))
 
 
 @router.message(Command("pause"))

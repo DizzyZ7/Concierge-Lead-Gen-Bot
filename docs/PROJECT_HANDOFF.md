@@ -1,7 +1,7 @@
 # Project Handoff
 
 ## Updated
-- UTC: 2026-06-25 22:54:11 UTC
+- UTC: 2026-06-25 23:23:26 UTC
 - Branch: unknown; this workspace has no `.git` metadata.
 - Current commit: unknown; this workspace has no `.git` metadata.
 
@@ -19,6 +19,9 @@ Thailand Lead Radar is prepared for reviewer-first startup with managed PostgreS
 - Fixed Russian Pattaya inflection matching in fallback geo scoring.
 - Added unit/smoke coverage for URL normalization, preflight blockers, source-validation helpers, and CI gates.
 - Updated README, operations docs, launch runbook, and CI workflow for managed DB and preflight flow.
+- Changed primary navigation callbacks to edit the existing control-panel message instead of sending a new message.
+- Reworked channel navigation into a compact channel overview plus per-channel detail screens with back navigation.
+- Made smoke-check blocker assertions independent from runtime `REVIEWER_USER_IDS`.
 
 ## Changed files
 - `README.md` - updated required revision and managed PostgreSQL launch flow.
@@ -39,6 +42,13 @@ Thailand Lead Radar is prepared for reviewer-first startup with managed PostgreS
 - `docs/OPERATIONS.md` - documented managed DB, preflight, and strict prerequisites.
 - `docs/LAUNCH_RUNBOOK.md` - documented command order for managed DB launch.
 - `docs/PROJECT_HANDOFF.md` - refreshed project state and verification status without secrets.
+- `bot/ui.py` - added safe edit-or-answer helpers for callback screens.
+- `bot/handlers/dashboard.py` - dashboard callback now edits the current menu message.
+- `bot/handlers/reports.py` - report callbacks now edit the current menu message and preserve reviewer/admin menu visibility.
+- `bot/handlers/channels.py` - channels now render compact overview/detail screens instead of one message per channel.
+- `bot/handlers/settings.py` - settings callback now edits the current menu message.
+- `bot/keyboards/inline.py` - added channel overview/detail navigation buttons.
+- `tests/test_channel_menu.py` - added coverage for compact channel screens and single-message navigation callbacks.
 
 ## Database and migrations
 - Required Alembic revision: `0010_reviewer_claims`.
@@ -54,13 +64,13 @@ Thailand Lead Radar is prepared for reviewer-first startup with managed PostgreS
 - Ran runtime schema guard against the provided external PostgreSQL database: `0010_reviewer_claims`.
 - Ran starter seed scripts against the provided external PostgreSQL database: 8 channels and 4 templates present/added.
 - Ran `.venv\Scripts\python.exe -m compileall -q .`: passed.
-- Ran `.venv\Scripts\python.exe -m unittest discover -s tests -v`: passed, 60 tests.
+- Ran `.venv\Scripts\python.exe -m unittest discover -s tests -v`: passed, 63 tests.
 - Ran `.venv\Scripts\python.exe -m scripts.smoke_check`: passed.
 - Ran `docker compose config` and `docker compose -f compose.external-db.yaml config`: passed with CI-style env.
 - Ran `.venv\Scripts\python.exe -m scripts.preflight_check` against external DB with safe test env: passed, `Config blockers: 0`.
 - Ran strict preflight with safe test env: correctly failed because live launch blockers remain.
 - Ran secret scan for provided DB URL fragments outside `.venv`/cache: no matches.
-- CI status: GitHub Actions passed for PR #1 commit `c360fa3`: `CI` run 224 and `Python check` run 310.
+- CI status: GitHub Actions passed for PR #1 head `fd5b5d9`: `CI` run 225 and `Python check` run 312. Current UI navigation changes are locally verified but not yet reflected in a remote CI run until pushed.
 
 ## Runtime and deployment
 - Deployed: unknown.

@@ -9,8 +9,10 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from bot.keyboards.inline import channel_actions
+from bot.keyboards.inline import channel_actions, channels_menu
+from bot.ui import edit_callback_message
 from db import queries
+from db.models import TargetChannel
 from services.ai import VALID_INTENTS
 from services.channel_cursor import reset_channel_cursor
 from services.channel_validation import is_channel_validation_fresh
@@ -38,29 +40,52 @@ def format_channel_validation(channel) -> str:
     return f"устарело {checked_text}: запусти /validate_channels"
 
 
+def format_channel_detail(channel: TargetChannel) -> str:
+    return (
+        f"Канал #{channel.id}\n"
+        f"Username: {escape(channel.channel_username)}\n"
+        f"Название: {escape(channel.channel_title or '-')}\n"
+        f"Валидация: {escape(format_channel_validation(channel))}\n"
+        f"Гео: {escape(channel.geo)}\n"
+        f"Категория: {escape(channel.category or '-')}\n"
+        f"Мониторинг: {'включен' if channel.is_active else 'выключен'}\n"
+        f"Лимит черновиков в день: {channel.daily_draft_limit}\n"
+        f"Задержка для reviewer-а: {channel.review_delay_min}-{channel.review_delay_max} мин.\n"
+        f"Минимальная оценка: {channel.min_score if channel.min_score is not None else '-'}\n"
+        f"Разрешенные intent: {escape(channel.allowed_intents or '-')}\n"
+        f"Стоп-слова: {escape(channel.blocked_keywords or '-')}\n"
+        f"Последнее сообщение cursor: {channel.last_seen_message_id or '-'}"
+    )
+
+
+def format_channels_overview(channels) -> str:
+    if not channels:
+        return "Каналов пока нет. Используй: /add_channel @username thailand relocation"
+    active_count = sum(1 for channel in channels if channel.is_active)
+    unchecked_count = sum(1 for channel in channels if not is_channel_validation_fresh(channel.last_validation_at, channel.last_validation_error))
+    lines = [
+        "Каналы",
+        "",
+        f"Всего: {len(channels)}",
+        f"Мониторинг включен: {active_count}",
+        f"Требуют проверки: {unchecked_count}",
+        "",
+        "Выбери канал для деталей:",
+    ]
+    for channel in channels:
+        state = "вкл" if channel.is_active else "выкл"
+        validation = "ok" if is_channel_validation_fresh(channel.last_validation_at, channel.last_validation_error) else "проверить"
+        lines.append(f"#{channel.id} {escape(channel.channel_username)} — {state}, {validation}")
+    return "\n".join(lines)
+
+
 async def send_channels(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
     async with session_factory() as session:
         channels = await queries.list_channels(session)
     if not channels:
         await message.answer("Каналов пока нет. Используй: /add_channel @username thailand relocation")
         return
-    for channel in channels:
-        text = (
-            f"Канал #{channel.id}\n"
-            f"Username: {escape(channel.channel_username)}\n"
-            f"Название: {escape(channel.channel_title or '-')}\n"
-            f"Валидация: {escape(format_channel_validation(channel))}\n"
-            f"Гео: {escape(channel.geo)}\n"
-            f"Категория: {escape(channel.category or '-')}\n"
-            f"Мониторинг: {'включен' if channel.is_active else 'выключен'}\n"
-            f"Лимит черновиков в день: {channel.daily_draft_limit}\n"
-            f"Задержка для reviewer-а: {channel.review_delay_min}-{channel.review_delay_max} мин.\n"
-            f"Минимальная оценка: {channel.min_score if channel.min_score is not None else '-'}\n"
-            f"Разрешенные intent: {escape(channel.allowed_intents or '-')}\n"
-            f"Стоп-слова: {escape(channel.blocked_keywords or '-')}\n"
-            f"Последнее сообщение cursor: {channel.last_seen_message_id or '-'}"
-        )
-        await message.answer(text, reply_markup=channel_actions(channel.id))
+    await message.answer(format_channels_overview(channels), reply_markup=channels_menu([channel.id for channel in channels]))
 
 
 @router.message(Command("channels"))
@@ -71,7 +96,25 @@ async def channels_command(message: Message, session_factory: async_sessionmaker
 @router.callback_query(F.data == "nav:channels")
 async def channels_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession]) -> None:
     await callback.answer()
-    await send_channels(callback.message, session_factory)
+    async with session_factory() as session:
+        channels = await queries.list_channels(session)
+    await edit_callback_message(
+        callback,
+        format_channels_overview(channels),
+        reply_markup=channels_menu([channel.id for channel in channels]) if channels else None,
+    )
+
+
+@router.callback_query(F.data.startswith("channel:view:"))
+async def channel_detail_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    await callback.answer()
+    channel_id = int(callback.data.split(":")[-1])
+    async with session_factory() as session:
+        channel = await session.get(TargetChannel, channel_id)
+    if not channel:
+        await edit_callback_message(callback, "Канал не найден.", reply_markup=channels_menu([]))
+        return
+    await edit_callback_message(callback, format_channel_detail(channel), reply_markup=channel_actions(channel.id))
 
 
 @router.message(Command("add_channel"))
@@ -207,3 +250,5 @@ async def toggle_channel_callback(callback: CallbackQuery, session_factory: asyn
     async with session_factory() as session:
         channel = await queries.toggle_channel(session, channel_id)
     await callback.answer("Мониторинг обновлен" if channel else "Канал не найден")
+    if channel:
+        await edit_callback_message(callback, format_channel_detail(channel), reply_markup=channel_actions(channel.id))

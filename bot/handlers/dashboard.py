@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.keyboards.inline import main_menu
 from bot.presentation import status_label
+from bot.ui import edit_callback_message
 from core.config import Settings
 from db import queries
 from db.models import ParsedPost
@@ -303,4 +304,8 @@ async def dashboard_callback(
 ) -> None:
     await callback.answer()
     is_admin = is_admin_user(callback.from_user.id if callback.from_user else None, settings)
-    await callback.message.answer(await render_dashboard(session_factory, is_admin=is_admin), reply_markup=main_menu(is_admin=is_admin))
+    await edit_callback_message(
+        callback,
+        await render_dashboard(session_factory, is_admin=is_admin),
+        reply_markup=main_menu(is_admin=is_admin),
+    )

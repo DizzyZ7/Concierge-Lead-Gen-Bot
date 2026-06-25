@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from datetime import datetime, timedelta, timezone
 
 from bot.handlers.all_handlers import build_router
@@ -108,17 +109,26 @@ def main() -> None:
     assert preflight_check.launch_check_ready("⚠️ Перед запуском нужно исправить пункты ниже\n") is False
     safe_settings = Settings(BOT_TOKEN="123:token", ADMIN_IDS="1", DATABASE_URL="postgresql://u:p@host/db")
     assert preflight_check.config_blockers(safe_settings) == []
-    unsafe_settings = Settings(
-        BOT_TOKEN="123:token",
-        ADMIN_IDS="1",
-        REVIEWER_CHAT_IDS="-100123",
-        DATABASE_URL="postgresql://u:p@host/db",
-        OUTBOUND_ENABLED="true",
-        AUTO_APPROVE="true",
-        REVIEWER_MODE="false",
-        PARSER_ENABLED="true",
-    )
-    assert len(preflight_check.config_blockers(unsafe_settings)) == 5
+    previous_reviewer_users = os.environ.pop("REVIEWER_USER_IDS", None)
+    try:
+        unsafe_settings = Settings(
+            BOT_TOKEN="123:token",
+            ADMIN_IDS="1",
+            REVIEWER_CHAT_IDS="-100123",
+            DATABASE_URL="postgresql://u:p@host/db",
+            OUTBOUND_ENABLED="true",
+            AUTO_APPROVE="true",
+            REVIEWER_MODE="false",
+            PARSER_ENABLED="true",
+        )
+        blockers = preflight_check.config_blockers(unsafe_settings)
+        assert any("OUTBOUND_ENABLED" in blocker for blocker in blockers)
+        assert any("AUTO_APPROVE" in blocker for blocker in blockers)
+        assert any("REVIEWER_MODE" in blocker for blocker in blockers)
+        assert any("TG_API_ID" in blocker for blocker in blockers)
+    finally:
+        if previous_reviewer_users is not None:
+            os.environ["REVIEWER_USER_IDS"] = previous_reviewer_users
     assert validate_channels.main is not None
     assert validate_channels.validation_details([]) == "checked=0 failed=0"
     print("Smoke check passed")
