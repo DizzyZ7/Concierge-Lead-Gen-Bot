@@ -7,8 +7,26 @@ The application starts only when the database schema is on the current Alembic r
 ```bash
 docker compose run --rm bot alembic upgrade head
 docker compose run --rm bot python -m scripts.smoke_check
+docker compose run --rm bot python -m scripts.preflight_check
 docker compose up -d --build
 ```
+
+For a managed PostgreSQL database, put its connection string into `DATABASE_URL` and use the external-db compose file so the bot does not try to start the bundled local database:
+
+```bash
+docker compose -f compose.external-db.yaml run --rm bot alembic upgrade head
+docker compose -f compose.external-db.yaml run --rm bot python -m scripts.smoke_check
+docker compose -f compose.external-db.yaml run --rm bot python -m scripts.seed_thailand_channels
+docker compose -f compose.external-db.yaml run --rm bot python -m services.session_login
+docker compose -f compose.external-db.yaml run --rm bot python -m scripts.validate_channels
+docker compose -f compose.external-db.yaml run --rm bot python -m scripts.preflight_check
+docker compose -f compose.external-db.yaml run --rm bot python -m scripts.preflight_check --strict
+docker compose -f compose.external-db.yaml up -d --build
+```
+
+Both `postgresql://...` and `postgresql+asyncpg://...` database URLs are accepted by the application.
+
+Strict preflight requires seeded channels, an authorized Telegram user session, and fresh source validation. For ordinary code-only deploys after launch, rerun `scripts.validate_channels` when sources or Telegram credentials changed.
 
 When migrations are behind, the bot exits before Telegram polling and logs the exact revision mismatch. This prevents a partially running process against an outdated schema.
 

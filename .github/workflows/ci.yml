@@ -26,9 +26,13 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      BOT_TOKEN: test-token
+      BOT_TOKEN: 123456:test-token
       ADMIN_IDS: "1"
+      REVIEWER_CHAT_IDS: "1"
       DATABASE_URL: postgresql+asyncpg://concierge:concierge@localhost:5432/concierge
+      POSTGRES_DB: concierge
+      POSTGRES_USER: concierge
+      POSTGRES_PASSWORD: concierge
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -41,6 +45,12 @@ jobs:
       - name: Install dependencies
         run: python -m pip install --upgrade pip && pip install -r requirements.txt
 
+      - name: Validate bundled database Compose config
+        run: docker compose config
+
+      - name: Validate external database Compose config
+        run: docker compose -f compose.external-db.yaml config
+
       - name: Compile Python modules
         run: python -m compileall -q .
 
@@ -52,3 +62,6 @@ jobs:
 
       - name: Run smoke check
         run: python -m scripts.smoke_check
+
+      - name: Run no-polling preflight check
+        run: python -m scripts.preflight_check

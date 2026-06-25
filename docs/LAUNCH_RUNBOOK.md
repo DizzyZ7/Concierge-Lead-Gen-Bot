@@ -5,6 +5,7 @@ Checklist for the first production launch.
 ## 1. Preflight
 
 - Create a private `.env` from `.env.example`.
+- Replace the example `POSTGRES_PASSWORD` when using the bundled local PostgreSQL service, or set `DATABASE_URL` to the managed PostgreSQL connection string when using `compose.external-db.yaml`.
 - Keep `OUTBOUND_ENABLED=false` and `AUTOMATION_LEVEL=assisted`.
 - Confirm `ADMIN_IDS` contains the operator Telegram user ID.
 - Confirm `REVIEWER_CHAT_IDS` contains Mikhail's private chat ID or user ID used for reviewer cards.
@@ -24,11 +25,9 @@ The parser has a built-in safety guard and ignores source posts older than 24 ho
 
 ## 2. Database and session
 
-Create the Telegram user session once:
+Use the default `compose.yaml` for the bundled local PostgreSQL service. If production uses a managed PostgreSQL database, set `DATABASE_URL` to that external connection string and replace `docker compose` with `docker compose -f compose.external-db.yaml` in the commands below.
 
-```bash
-docker compose run --rm bot python -m services.session_login
-```
+The application accepts both `postgresql://...` and `postgresql+asyncpg://...` formats for `DATABASE_URL`.
 
 Check and apply migrations:
 
@@ -43,12 +42,26 @@ Seed the initial Thailand source list and its filters:
 docker compose run --rm bot python -m scripts.seed_thailand_channels
 ```
 
+Create the Telegram user session once:
+
+```bash
+docker compose run --rm bot python -m services.session_login
+```
+
+Validate the configured Telegram sources before strict preflight:
+
+```bash
+docker compose run --rm bot python -m scripts.validate_channels
+```
+
 ## 3. Smoke check and start
 
 Run the code smoke check before the first start:
 
 ```bash
 docker compose run --rm bot python -m scripts.smoke_check
+docker compose run --rm bot python -m scripts.preflight_check
+docker compose run --rm bot python -m scripts.preflight_check --strict
 ```
 
 Build and start the stack:
