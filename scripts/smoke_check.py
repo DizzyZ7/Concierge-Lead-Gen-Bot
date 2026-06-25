@@ -10,7 +10,7 @@ from bot.presentation import intent_label, status_label
 from core.config import Settings
 from core.reviewer_access import parse_reviewer_user_ids
 from db.migration_guard import REQUIRED_ALEMBIC_REVISION
-from db.models import Lead, ParsedPost, PostAction, TargetChannel
+from db.models import Lead, ParsedPost, PostAction, ReviewDraft, TargetChannel
 from services.ai import AIService
 from services.channel_cursor import advance_channel_cursor, iter_unseen_messages, reset_channel_cursor
 from services.channel_validation import is_channel_validation_fresh
@@ -19,13 +19,14 @@ from services.parser import ParserService, current_day_start_utc, has_blocked_ke
 from services.post_audit import actor_from_user, list_post_actions, record_post_action
 from services.post_state import APPROVABLE_STATUSES, FINAL_OUTCOME_STATUSES, apply_result_once, can_approve, mark_reviewer_done_once, skip_post_once
 from services.reviewer_cards import render_reviewer_card
+from services.reviewer_claims import REVIEWER_CLAIM_TIMEOUT, claim_status_line, is_active_claim
 from services.runtime_ops import RuntimeOps, needs_recovery_notification, parse_iso, runtime_key
 from services.text_tools import normalize_text, text_hash
 
 
 def main() -> None:
     now = datetime.now(timezone.utc)
-    assert REQUIRED_ALEMBIC_REVISION == "0009_post_action_audit"
+    assert REQUIRED_ALEMBIC_REVISION == "0010_reviewer_claims"
     assert split_csv("realty, visa,realty") == {"realty", "visa"}
     assert has_blocked_keyword("Crypto offer", "casino,crypto")
     assert not has_blocked_keyword("Thailand apartment", "casino,crypto")
@@ -47,6 +48,7 @@ def main() -> None:
     assert "lead" in FINAL_OUTCOME_STATUSES
     assert "pending" in APPROVABLE_STATUSES
     assert DEFAULT_FOLLOWUP_HOURS == 48
+    assert REVIEWER_CLAIM_TIMEOUT == timedelta(minutes=45)
     assert "UTC" in format_activity(now - timedelta(hours=2))
     assert normalize_text("HTTPS://t.me/test  Phuket!!!") == "phuket"
     assert len(text_hash("Thailand relocation")) == 64
@@ -62,6 +64,7 @@ def main() -> None:
         reason="reason",
         summary="summary",
         angle="angle",
+        claim_line="Карточка свободна.",
     )
     assert TargetChannel.__tablename__ == "target_channels"
     assert hasattr(TargetChannel, "last_seen_message_id")
@@ -70,12 +73,17 @@ def main() -> None:
     assert is_channel_validation_fresh(now, None, now=now)
     assert not is_channel_validation_fresh(now, "ChannelPrivateError", now=now)
     assert ParsedPost.__tablename__ == "parsed_posts"
+    assert ReviewDraft.__tablename__ == "review_drafts"
+    assert hasattr(ReviewDraft, "claimed_by_user_id")
+    assert hasattr(ReviewDraft, "claim_expires_at")
     assert PostAction.__tablename__ == "post_actions"
     assert Lead.__tablename__ == "leads"
     assert hasattr(Lead, "updated_at")
     assert actor_from_user(None).user_id is None
     assert list_post_actions is not None
     assert record_post_action is not None
+    assert claim_status_line is not None
+    assert is_active_claim is not None
     assert ParserService is not None
     assert AIService is not None
     assert RuntimeOps is not None
