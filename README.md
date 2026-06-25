@@ -61,6 +61,9 @@ BOT_TOKEN=123456:token
 ADMIN_IDS=123456789
 REVIEWER_CHAT_IDS=123456789
 DATABASE_URL=postgresql+asyncpg://concierge:concierge@db:5432/concierge
+POSTGRES_DB=concierge
+POSTGRES_USER=concierge
+POSTGRES_PASSWORD=change-me-local-only
 TIMEZONE=Asia/Bangkok
 PARSER_ENABLED=false
 OUTBOUND_ENABLED=false
@@ -81,7 +84,7 @@ Never commit `.env` or files in `sessions/`.
 
 ## Deploy and migration gate
 
-The application requires Alembic revision `0009_post_action_audit`. The bot checks this before polling; a stale database schema prevents startup instead of causing hidden runtime errors.
+The application requires Alembic revision `0010_reviewer_claims`. The bot checks this before polling; a stale database schema prevents startup instead of causing hidden runtime errors.
 
 Recommended first deployment:
 
@@ -89,11 +92,29 @@ Recommended first deployment:
 docker compose up -d db
 docker compose run --rm bot alembic upgrade head
 docker compose run --rm bot python -m scripts.smoke_check
+docker compose run --rm bot python -m scripts.preflight_check
 docker compose up -d --build bot
 docker compose logs -f bot
 ```
 
 The Docker image also runs `alembic upgrade head` before `python main.py`, but the explicit migration command above makes a first deployment and troubleshooting clearer.
+
+`POSTGRES_PASSWORD` is required only when using the bundled local PostgreSQL service from `compose.yaml`. Replace the example value before any real deployment.
+
+For a managed PostgreSQL database, set `DATABASE_URL` to the external database connection string and use the external-db compose file:
+
+```bash
+docker compose -f compose.external-db.yaml run --rm bot alembic upgrade head
+docker compose -f compose.external-db.yaml run --rm bot python -m scripts.smoke_check
+docker compose -f compose.external-db.yaml run --rm bot python -m scripts.seed_thailand_channels
+docker compose -f compose.external-db.yaml run --rm bot python -m services.session_login
+docker compose -f compose.external-db.yaml run --rm bot python -m scripts.validate_channels
+docker compose -f compose.external-db.yaml run --rm bot python -m scripts.preflight_check
+docker compose -f compose.external-db.yaml run --rm bot python -m scripts.preflight_check --strict
+docker compose -f compose.external-db.yaml up -d --build
+```
+
+`DATABASE_URL` may use either `postgresql://...` or `postgresql+asyncpg://...`; the application normalizes plain PostgreSQL URLs to the async driver internally.
 
 ## Telegram source monitoring setup
 
@@ -122,6 +143,12 @@ Seed initial Thailand sources or add them manually:
 
 ```bash
 docker compose run --rm bot python -m scripts.seed_thailand_channels
+```
+
+Validate configured sources without starting bot polling:
+
+```bash
+docker compose run --rm bot python -m scripts.validate_channels
 ```
 
 ```text

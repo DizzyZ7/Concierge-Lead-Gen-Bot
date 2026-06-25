@@ -1,20 +1,4 @@
 services:
-  db:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-concierge}
-      POSTGRES_USER: ${POSTGRES_USER:-concierge}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env before starting the stack}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-
   bot:
     build: .
     restart: unless-stopped
@@ -42,11 +26,5 @@ services:
       TG_API_HASH: ${TG_API_HASH:-}
       TG_PHONE: ${TG_PHONE:-}
       TG_SESSION_NAME: ${TG_SESSION_NAME:-concierge_session}
-    depends_on:
-      db:
-        condition: service_healthy
     volumes:
       - ./sessions:/app/sessions
-
-volumes:
-  postgres_data:
