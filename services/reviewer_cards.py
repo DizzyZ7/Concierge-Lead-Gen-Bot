@@ -48,6 +48,7 @@ def render_reviewer_card(
     reason: str | None,
     summary: str | None,
     angle: str | None,
+    claim_line: str | None = None,
 ) -> str:
     source = escape_and_trim(source_text, 800)
     draft = escape_and_trim(draft_text, 1600)
@@ -57,12 +58,14 @@ def render_reviewer_card(
     angle_text = escape_and_trim(fallback_text(angle, "Можно аккуратно зайти с полезным уточнением или советом."), 350)
     contact_note = contact_candidates_note(source_text)
     contacts_line = f"{escape_and_trim(contact_note, 350)}\n" if contact_note else ""
+    claim_status = escape_and_trim(claim_line or "Карточка свободна.", 260)
     return (
         f"Лид-радар: пост #{post_id}\n"
         f"Черновик #{draft_id}\n"
         f"Канал: {escape_and_trim(channel, 200)}\n"
         f"Категория: {escape_and_trim(intent_label(intent), 100)}\n"
         f"Оценка: {score_text}\n"
+        f"Статус работы: {claim_status}\n"
         f"Почему релевантно: {reason_text}\n"
         f"Кратко: {summary_text}\n"
         f"Как зайти в диалог: {angle_text}\n"
