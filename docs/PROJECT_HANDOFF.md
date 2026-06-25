@@ -1,7 +1,7 @@
 # Project Handoff
 
 ## Updated
-- UTC: 2026-06-25 20:57:09 UTC
+- UTC: 2026-06-25 22:54:11 UTC
 - Branch: unknown; this workspace has no `.git` metadata.
 - Current commit: unknown; this workspace has no `.git` metadata.
 
@@ -60,7 +60,7 @@ Thailand Lead Radar is prepared for reviewer-first startup with managed PostgreS
 - Ran `.venv\Scripts\python.exe -m scripts.preflight_check` against external DB with safe test env: passed, `Config blockers: 0`.
 - Ran strict preflight with safe test env: correctly failed because live launch blockers remain.
 - Ran secret scan for provided DB URL fragments outside `.venv`/cache: no matches.
-- CI status: unknown; this workspace has no `.git` metadata and no remote CI result was queried.
+- CI status: GitHub Actions passed for PR #1 commit `c360fa3`: `CI` run 224 and `Python check` run 310.
 
 ## Runtime and deployment
 - Deployed: unknown.
@@ -71,7 +71,7 @@ Thailand Lead Radar is prepared for reviewer-first startup with managed PostgreS
 - Required environment variables without secret values: `BOT_TOKEN`, `ADMIN_IDS`, `REVIEWER_CHAT_IDS`, `REVIEWER_USER_IDS` for group/supergroup reviewer delivery, `DATABASE_URL`, `TIMEZONE`, `OUTBOUND_ENABLED=false`, `PARSER_ENABLED`, `TG_API_ID`, `TG_API_HASH`, `TG_PHONE`, `TG_SESSION_NAME`, optional `ANTHROPIC_API_KEY`, optional `ANTHROPIC_MODEL`.
 
 ## Known risks and unresolved issues
-- No `.git` metadata is present, so branch, current commit, latest commit, diff, commit creation, and remote CI cannot be verified here.
+- No `.git` metadata is present in the original workspace, so local branch/current commit cannot be verified there; changes were pushed from a temporary clean clone to PR #1.
 - Docker build cannot complete until Docker Hub image downloads are stable or base images are available locally.
 - Real Telegram bot token, admin/reviewer IDs, Telethon API credentials, phone/session, and optional Claude key are still needed in private runtime environment.
 - Seeded Telegram sources still need live validation through `python -m services.session_login` and `python -m scripts.validate_channels`.
