@@ -8,6 +8,7 @@ from core.config import Settings
 from core.logger import get_logger
 from db import queries
 from services.reviewer_cards import render_reviewer_card
+from services.reviewer_claims import claim_status_line
 from services.runtime_ops import RuntimeOps
 
 log = get_logger(__name__)
@@ -58,6 +59,7 @@ class ReviewerDispatcher:
                         reason=post.relevance_reason,
                         summary=post.content_summary,
                         angle=post.suggested_angle,
+                        claim_line=claim_status_line(draft),
                     )
                     try:
                         sent = await self.bot.send_message(
