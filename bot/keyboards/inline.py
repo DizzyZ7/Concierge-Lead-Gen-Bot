@@ -81,6 +81,10 @@ def approved_actions(post_id: int, url: str | None) -> InlineKeyboardMarkup:
 
 def reviewer_actions(post_id: int, url: str | None) -> InlineKeyboardMarkup:
     rows = [
+        [
+            InlineKeyboardButton(text="Взять в работу", callback_data=f"review:claim:{post_id}"),
+            InlineKeyboardButton(text="Освободить", callback_data=f"review:release:{post_id}"),
+        ],
         [InlineKeyboardButton(text="Обработано", callback_data=f"review:done:{post_id}")],
         [InlineKeyboardButton(text="Сохранить", callback_data=f"post:save:{post_id}")],
         [InlineKeyboardButton(text="Показать черновик", callback_data=f"post:draft:{post_id}")],
