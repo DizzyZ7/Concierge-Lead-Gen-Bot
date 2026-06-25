@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import timezone
 
-from aiogram import F, Router
+from aiogram import Bot, F, Router
 from aiogram.types import CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -66,17 +66,40 @@ def reviewer_card_text(post) -> str:
     )
 
 
-async def refresh_card(callback: CallbackQuery, post) -> None:
+async def edit_card_message(bot: Bot, *, chat_id: int, message_id: int, post) -> None:
+    await bot.edit_message_text(
+        text=reviewer_card_text(post),
+        chat_id=chat_id,
+        message_id=message_id,
+        reply_markup=reviewer_actions(post.id, post.post_url),
+        disable_web_page_preview=True,
+    )
+
+
+async def refresh_cards(callback: CallbackQuery, bot: Bot, post) -> None:
+    draft = post.draft
+    refreshed: set[tuple[int, int]] = set()
+    if draft and draft.reviewer_chat_id is not None and draft.reviewer_message_id is not None:
+        try:
+            await edit_card_message(
+                bot,
+                chat_id=draft.reviewer_chat_id,
+                message_id=draft.reviewer_message_id,
+                post=post,
+            )
+            refreshed.add((draft.reviewer_chat_id, draft.reviewer_message_id))
+        except Exception as error:
+            log.warning("reviewer_claim_original_card_refresh_failed", post_id=post.id, error=str(error))
+
     if callback.message is None:
         return
+    current = (callback.message.chat.id, callback.message.message_id)
+    if current in refreshed:
+        return
     try:
-        await callback.message.edit_text(
-            reviewer_card_text(post),
-            reply_markup=reviewer_actions(post.id, post.post_url),
-            disable_web_page_preview=True,
-        )
+        await edit_card_message(bot, chat_id=current[0], message_id=current[1], post=post)
     except Exception as error:
-        log.warning("reviewer_claim_card_refresh_failed", post_id=post.id, error=str(error))
+        log.warning("reviewer_claim_callback_card_refresh_failed", post_id=post.id, error=str(error))
 
 
 async def audit_claim(
@@ -104,6 +127,7 @@ async def audit_claim(
 @router.callback_query(F.data.startswith("review:claim:"))
 async def claim_callback(
     callback: CallbackQuery,
+    bot: Bot,
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     post_id_raw = callback.data.rsplit(":", 1)[-1]
@@ -124,13 +148,14 @@ async def claim_callback(
             )
         post = await queries.get_post_with_details(session, post_id)
     if post and result.code in {"claimed", "renewed", "released"}:
-        await refresh_card(callback, post)
+        await refresh_cards(callback, bot, post)
     await callback.answer(claim_feedback(result), show_alert=result.code in {"taken", "missing", "not_reviewing", "actor_missing"})
 
 
 @router.callback_query(F.data.startswith("review:release:"))
 async def release_callback(
     callback: CallbackQuery,
+    bot: Bot,
     session_factory: async_sessionmaker[AsyncSession],
     settings: Settings,
 ) -> None:
@@ -151,5 +176,5 @@ async def release_callback(
             await audit_claim(session, post_id=post_id, action="claim_released", callback=callback, details=details)
         post = await queries.get_post_with_details(session, post_id)
     if post and result.code == "released":
-        await refresh_card(callback, post)
+        await refresh_cards(callback, bot, post)
     await callback.answer(claim_feedback(result), show_alert=result.code in {"taken", "missing"})
