@@ -23,6 +23,9 @@ def action_label(action: str) -> str:
         "saved": "Сохранено",
         "skipped": "Пропущено",
         "reviewer_done": "Отмечено обработанным",
+        "claimed": "Взято в работу",
+        "claim_renewed": "Захват продлен",
+        "claim_released": "Карточка освобождена",
     }
     return labels.get(action, action)
 
