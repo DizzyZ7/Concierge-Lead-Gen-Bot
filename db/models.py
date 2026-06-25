@@ -71,6 +71,11 @@ class ReviewDraft(Base):
     reviewer_chat_id: Mapped[int | None] = mapped_column(BigInteger)
     reviewer_message_id: Mapped[int | None] = mapped_column(BigInteger)
     marked_done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    claimed_by_user_id: Mapped[int | None] = mapped_column(BigInteger)
+    claimed_by_username: Mapped[str | None] = mapped_column(String(128))
+    claimed_by_name: Mapped[str | None] = mapped_column(String(256))
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    claim_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     post: Mapped[ParsedPost] = relationship(back_populates="draft")
