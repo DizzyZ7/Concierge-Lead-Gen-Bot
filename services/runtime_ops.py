@@ -5,6 +5,7 @@ from html import escape
 from typing import Final
 
 from aiogram import Bot
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from core.config import Settings
@@ -95,6 +96,8 @@ class RuntimeOps:
         for admin_id in self.settings.admin_ids:
             try:
                 await self.bot.send_message(admin_id, message, disable_web_page_preview=True)
+            except (TelegramForbiddenError, TelegramBadRequest) as alert_error:
+                log.warning("runtime_alert_send_forbidden", admin_id=admin_id, error=str(alert_error))
             except Exception as alert_error:
                 log.warning("runtime_alert_send_failed", admin_id=admin_id, error=str(alert_error))
 
@@ -108,6 +111,8 @@ class RuntimeOps:
         for admin_id in self.settings.admin_ids:
             try:
                 await self.bot.send_message(admin_id, message, disable_web_page_preview=True)
+            except (TelegramForbiddenError, TelegramBadRequest) as alert_error:
+                log.warning("runtime_recovery_alert_send_forbidden", admin_id=admin_id, error=str(alert_error))
             except Exception as alert_error:
                 log.warning("runtime_recovery_alert_send_failed", admin_id=admin_id, error=str(alert_error))
 

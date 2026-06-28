@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from aiogram import Bot
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.keyboards.inline import reviewer_actions
@@ -68,12 +69,27 @@ class ReviewerDispatcher:
                             reply_markup=reviewer_actions(post.id, post.post_url),
                             disable_web_page_preview=True,
                         )
+                    except (TelegramForbiddenError, TelegramBadRequest) as error:
+                        log.warning(
+                            "reviewer_send_unreachable",
+                            reviewer_id=reviewer_id,
+                            draft_id=draft.id,
+                            error=str(error),
+                        )
+                        if self.runtime_ops:
+                            await self.runtime_ops.failure(
+                                "reviewer",
+                                error,
+                                f"Bot cannot send draft #{draft.id} to reviewer chat {reviewer_id}; add the bot to the chat and grant send permission.",
+                            )
+                        continue
                     except Exception as error:
                         log.warning("reviewer_send_failed", reviewer_id=reviewer_id, draft_id=draft.id, error=str(error))
                         if self.runtime_ops:
                             await self.runtime_ops.failure("reviewer", error, f"Не отправлен черновик #{draft.id} в чат {reviewer_id}")
                         continue
                     await queries.mark_draft_sent(session, draft.id, reviewer_id, sent.message_id)
+                    log.info("Card sent to reviewer", reviewer_id=reviewer_id, draft_id=draft.id, post_id=post.id)
                     delivered += 1
             if self.runtime_ops:
                 await self.runtime_ops.heartbeat("reviewer", f"due={len(drafts)} delivered={delivered}")

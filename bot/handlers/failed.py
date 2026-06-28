@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.keyboards.inline import failed_actions
 from bot.presentation import intent_label
+from bot.ui import callback_message_or_alert, edit_callback_message_or_alert
 from core.config import Settings
 from db import queries
 from services.ai import AIService
@@ -46,8 +47,11 @@ async def failed_queue_command(message: Message, session_factory: async_sessionm
 
 @router.callback_query(F.data == "nav:failed_queue")
 async def failed_queue_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    message = await callback_message_or_alert(callback)
+    if not message:
+        return
     await callback.answer()
-    await send_failed_queue(callback.message, session_factory)
+    await send_failed_queue(message, session_factory)
 
 
 @router.callback_query(F.data.startswith("failed:retry:"))
@@ -76,12 +80,13 @@ async def retry_failed_callback(
             if value < min_score:
                 post.status = "pending"
                 await session.commit()
-                await callback.message.edit_text(
+                if await edit_callback_message_or_alert(
+                    callback,
                     f"Пост #{post.id} повторно обработан и возвращен на ручную проверку.\n"
                     f"Категория: {escape_and_trim(intent_label(intent), 100)}\n"
-                    f"Оценка: {value:.2f}"
-                )
-                await callback.answer("Повторная обработка выполнена")
+                    f"Оценка: {value:.2f}",
+                ):
+                    await callback.answer("Повторная обработка выполнена")
                 return
 
             draft_text, source = await ai_service.generate_draft(post.post_text or "", post.channel.geo, intent, session)
@@ -97,8 +102,10 @@ async def retry_failed_callback(
                 await queries.increment_stat(session, "ai_drafts", 1)
             else:
                 await queries.increment_stat(session, "template_drafts", 1)
-        await callback.message.edit_text(f"Пост #{post_id} повторно обработан и отправлен в reviewer pipeline.")
-        await callback.answer("Повторная обработка выполнена")
+        if await edit_callback_message_or_alert(callback, f"Пост #{post_id} повторно обработан и отправлен в reviewer pipeline."):
+            await callback.answer("Повторная обработка выполнена")
     except Exception as error:
         await callback.answer("Повторная обработка не удалась", show_alert=True)
-        await callback.message.answer(f"Ошибка повторной обработки: {escape_and_trim(error.__class__.__name__, 120)}")
+        message = await callback_message_or_alert(callback)
+        if message:
+            await message.answer(f"Ошибка повторной обработки: {escape_and_trim(error.__class__.__name__, 120)}")

@@ -5,10 +5,12 @@ Checklist for the first production launch.
 ## 1. Preflight
 
 - Create a private `.env` from `.env.example`.
-- Replace the example `POSTGRES_PASSWORD` when using the bundled local PostgreSQL service, or set `DATABASE_URL` to the managed PostgreSQL connection string when using `compose.external-db.yaml`.
+- On BotHost, set `DATABASE_URL` to the external managed PostgreSQL connection string. Do not use `localhost` or `db:5432` there.
+- Replace the example `POSTGRES_PASSWORD` only when using the bundled local PostgreSQL service.
 - Keep `OUTBOUND_ENABLED=false` and `AUTOMATION_LEVEL=assisted`.
 - Confirm `ADMIN_IDS` contains the operator Telegram user ID.
-- Confirm `REVIEWER_CHAT_IDS` contains Mikhail's private chat ID or user ID used for reviewer cards.
+- Confirm `REVIEWER_CHAT_IDS` contains the private reviewer chat ID or the group/supergroup ID used for reviewer cards.
+- If `REVIEWER_CHAT_IDS` is a group/supergroup, add the bot to the chat manually and grant send permission before deploy.
 - Add `ANTHROPIC_API_KEY`, `TG_API_ID`, `TG_API_HASH`, and `TG_PHONE`.
 - Make sure every reviewer has opened the bot and pressed `/start` at least once.
 
@@ -24,6 +26,37 @@ RELEVANCE_THRESHOLD=0.70
 The parser has a built-in safety guard and ignores source posts older than 24 hours on the first monitoring pass.
 
 ## 2. Database and session
+
+### BotHost production
+
+BotHost starts the bot with one direct command:
+
+```bash
+python main.py
+```
+
+`main.py` is the single production entrypoint. It loads `.env`, checks the external PostgreSQL connection with retry, applies `alembic upgrade head` when needed, deletes any stale Telegram webhook, checks reviewer-chat reachability, and then starts aiogram polling.
+
+Expected startup log events:
+
+```text
+database_connection_ok
+telegram_webhook_deleted
+startup_self_check
+```
+
+If a reviewer group is unreachable, the log event is `reviewer_chat_unreachable`; add the bot to the chat and redeploy/restart.
+
+Manual BotHost shell checks, if needed:
+
+```bash
+python -m alembic current
+python -m alembic upgrade head
+python -m scripts.smoke_check
+python -m scripts.preflight_check
+```
+
+### Docker/local
 
 Use the default `compose.yaml` for the bundled local PostgreSQL service. If production uses a managed PostgreSQL database, set `DATABASE_URL` to that external connection string and replace `docker compose` with `docker compose -f compose.external-db.yaml` in the commands below.
 
@@ -72,7 +105,7 @@ docker compose ps
 docker compose logs -f bot
 ```
 
-The bot container applies `alembic upgrade head` before launching `main.py`.
+The bot container and direct BotHost entrypoint both apply `alembic upgrade head` before polling.
 
 ## 4. Acceptance test in Telegram
 

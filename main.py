@@ -4,14 +4,16 @@ import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
 
+from aiogram import Bot, Dispatcher
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramUnauthorizedError
 from telethon import TelegramClient
 
 from bot.main import create_bot, create_dispatcher
-from core.config import get_settings
+from core.config import Settings, get_settings
 from core.logger import get_logger, setup_logging
 from core.scheduler import create_scheduler
-from db.migration_guard import SchemaNotReadyError, ensure_schema_current
-from db.session import create_engine, create_session_factory
+from db.migration_guard import SchemaNotReadyError, ensure_schema_current, upgrade_schema_to_head
+from db.session import check_database_connection, create_engine, create_session_factory
 from services.ai import AIService
 from services.channel_validation import validate_channels
 from services.limit_queue_promoter import LimitQueuePromoter
@@ -21,9 +23,100 @@ from services.runtime_ops import RuntimeOps
 
 log = get_logger(__name__)
 SOURCE_VALIDATION_INTERVAL_HOURS = 24
+DATABASE_CONNECT_ATTEMPTS = 5
+DATABASE_CONNECT_RETRY_SECONDS = 3
 
 
-async def build_parser(settings, session_factory, ai_service, runtime_ops) -> tuple[TelegramClient | None, ParserService | None]:
+async def wait_for_database(engine) -> None:
+    last_error: Exception | None = None
+    for attempt in range(1, DATABASE_CONNECT_ATTEMPTS + 1):
+        try:
+            await check_database_connection(engine)
+            log.info("database_connection_ok", attempt=attempt)
+            return
+        except Exception as error:
+            last_error = error
+            log.warning(
+                "database_connection_failed",
+                attempt=attempt,
+                attempts=DATABASE_CONNECT_ATTEMPTS,
+                retry_seconds=DATABASE_CONNECT_RETRY_SECONDS,
+                error=str(error),
+            )
+            if attempt < DATABASE_CONNECT_ATTEMPTS:
+                await asyncio.sleep(DATABASE_CONNECT_RETRY_SECONDS)
+    raise RuntimeError("Database connection failed after retries") from last_error
+
+
+async def run_startup_migrations(session_factory) -> str:
+    try:
+        return await ensure_schema_current(session_factory)
+    except SchemaNotReadyError as error:
+        log.warning("database_schema_upgrade_required", error=str(error))
+        await upgrade_schema_to_head()
+        revision = await ensure_schema_current(session_factory)
+        log.info("database_schema_current", revision=revision)
+        return revision
+
+
+async def prepare_polling(bot: Bot) -> None:
+    await bot.delete_webhook(drop_pending_updates=True)
+    log.info("telegram_webhook_deleted", drop_pending_updates=True)
+
+
+async def check_reviewer_chats(bot: Bot, settings: Settings) -> dict[int, str]:
+    results: dict[int, str] = {}
+    for chat_id in sorted(settings.reviewer_chat_ids):
+        try:
+            await bot.send_chat_action(chat_id=chat_id, action="typing")
+            results[chat_id] = "ok"
+            log.info("reviewer_chat_reachable", chat_id=chat_id)
+        except (TelegramForbiddenError, TelegramBadRequest) as error:
+            results[chat_id] = f"{error.__class__.__name__}: {error}"
+            log.warning(
+                "reviewer_chat_unreachable",
+                chat_id=chat_id,
+                error=str(error),
+                hint="Add the bot to this reviewer chat and allow it to send messages.",
+            )
+        except Exception as error:
+            results[chat_id] = f"{error.__class__.__name__}: {error}"
+            log.warning("reviewer_chat_check_failed", chat_id=chat_id, error=str(error))
+    return results
+
+
+async def startup_self_check(
+    *,
+    bot: Bot,
+    dispatcher: Dispatcher,
+    settings: Settings,
+    db_revision: str,
+) -> None:
+    try:
+        me = await bot.get_me()
+    except TelegramUnauthorizedError as error:
+        log.error("bot_token_invalid", error=str(error))
+        raise
+    reviewer_results = await check_reviewer_chats(bot, settings)
+    log.info(
+        "startup_self_check",
+        bot_username=me.username,
+        bot_id=me.id,
+        db_revision=db_revision,
+        dispatcher_routers=len(dispatcher.sub_routers),
+        reviewer_chat_ids=sorted(settings.reviewer_chat_ids),
+        reviewer_reachability=reviewer_results,
+        parser_enabled=settings.parser_enabled,
+        parser_ready=settings.parser_ready,
+    )
+
+
+async def build_parser(
+    settings: Settings,
+    session_factory,
+    ai_service: AIService,
+    runtime_ops: RuntimeOps,
+) -> tuple[TelegramClient | None, ParserService | None]:
     if not settings.parser_ready:
         return None, None
     session_path = Path("sessions") / settings.tg_session_name
@@ -49,12 +142,8 @@ async def main() -> None:
     settings = get_settings()
     engine = create_engine(settings.database_url)
     session_factory = create_session_factory(engine)
-    try:
-        await ensure_schema_current(session_factory)
-    except SchemaNotReadyError as error:
-        log.error("database_schema_not_ready", error=str(error))
-        await engine.dispose()
-        raise SystemExit(1) from error
+    await wait_for_database(engine)
+    db_revision = await run_startup_migrations(session_factory)
 
     bot = create_bot(settings)
     ai_service = AIService(settings)
@@ -154,10 +243,17 @@ async def main() -> None:
             interval_minutes=settings.parser_interval_minutes,
             validation_interval_hours=SOURCE_VALIDATION_INTERVAL_HOURS,
         )
-    scheduler.start()
+    else:
+        log.info("parser_disabled_or_not_ready", parser_enabled=settings.parser_enabled, parser_ready=settings.parser_ready)
 
     try:
+        await prepare_polling(bot)
+        await startup_self_check(bot=bot, dispatcher=dispatcher, settings=settings, db_revision=db_revision)
+        scheduler.start()
         await dispatcher.start_polling(bot)
+    except Exception:
+        log.exception("polling_loop_failed")
+        raise
     finally:
         scheduler.shutdown(wait=False)
         if telegram_client:
@@ -167,4 +263,10 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        log.info("shutdown_requested")
+    except Exception:
+        log.exception("application_stopped_with_error")
+        raise

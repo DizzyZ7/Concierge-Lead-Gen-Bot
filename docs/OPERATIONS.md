@@ -2,7 +2,17 @@
 
 ## Deployment gate
 
-The application starts only when the database schema is on the current Alembic revision. Before every deploy with new code, run:
+The application starts only when the database schema is on the current Alembic revision.
+
+On BotHost, deploy with:
+
+```bash
+python main.py
+```
+
+BotHost does not run Docker Compose. Configure `DATABASE_URL` with an external PostgreSQL host reachable from BotHost, not `localhost` or `db:5432`. The direct entrypoint retries the DB connection, applies `alembic upgrade head`, deletes stale Telegram webhooks, checks reviewer chat reachability, and starts polling.
+
+Before every Docker/local deploy with new code, run:
 
 ```bash
 docker compose run --rm bot alembic upgrade head
@@ -24,11 +34,11 @@ docker compose -f compose.external-db.yaml run --rm bot python -m scripts.prefli
 docker compose -f compose.external-db.yaml up -d --build
 ```
 
-Both `postgresql://...` and `postgresql+asyncpg://...` database URLs are accepted by the application.
+Both `postgresql://...` and `postgresql+asyncpg://...` database URLs are accepted by the application. Accidental surrounding quotes and whitespace are stripped from critical env values at startup.
 
 Strict preflight requires seeded channels, an authorized Telegram user session, and fresh source validation. For ordinary code-only deploys after launch, rerun `scripts.validate_channels` when sources or Telegram credentials changed.
 
-When migrations are behind, the bot exits before Telegram polling and logs the exact revision mismatch. This prevents a partially running process against an outdated schema.
+When migrations are behind, direct startup applies them automatically. If a migration still fails, the bot exits before Telegram polling and logs the exception. This prevents a partially running process against an outdated schema.
 
 ## Reviewer delivery and access
 
@@ -46,6 +56,8 @@ REVIEWER_USER_IDS=123456789,987654321
 ```
 
 The bot never treats a negative group ID as a human user ID. `/launch_check` warns when a reviewer group is configured without authorized reviewer users.
+
+Startup also sends a `typing` chat action to every configured reviewer chat. `reviewer_chat_unreachable` means the bot is not in that chat, cannot send there, or the chat ID is wrong.
 
 ## Daily checks
 

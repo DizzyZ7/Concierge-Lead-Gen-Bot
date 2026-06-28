@@ -11,10 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.keyboards.inline import pending_actions, reviewer_actions
 from bot.presentation import intent_label
+from bot.ui import callback_message_or_alert, edit_callback_message_or_alert
 from core.logger import get_logger
 from db import queries
 from services.ai import AIService
-from services.post_state import can_approve, mark_reviewer_done_once, skip_post_once
+from services.post_state import can_approve
 from services.reviewer_cards import render_reviewer_card
 
 router = Router(name=__name__)
@@ -132,8 +133,11 @@ async def pending_command(message: Message, session_factory: async_sessionmaker[
 
 @router.callback_query(F.data == "nav:pending")
 async def pending_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    message = await callback_message_or_alert(callback)
+    if not message:
+        return
     await callback.answer()
-    await send_pending(callback.message, session_factory)
+    await send_pending(message, session_factory)
 
 
 @router.message(Command("limit_queue"))
@@ -143,8 +147,11 @@ async def limit_queue_command(message: Message, session_factory: async_sessionma
 
 @router.callback_query(F.data == "nav:limit_queue")
 async def limit_queue_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    message = await callback_message_or_alert(callback)
+    if not message:
+        return
     await callback.answer()
-    await send_limit_queue(callback.message, session_factory)
+    await send_limit_queue(message, session_factory)
 
 
 @router.message(Command("add_item"))
@@ -209,8 +216,8 @@ async def approve_callback(callback: CallbackQuery, session_factory: async_sessi
             await queries.increment_stat(session, "ai_drafts", 1)
         else:
             await queries.increment_stat(session, "template_drafts", 1)
-    await callback.message.edit_text(f"Пост #{post_id} одобрен и попадет в reviewer-очередь по расписанию.")
-    await callback.answer()
+    if await edit_callback_message_or_alert(callback, f"Пост #{post_id} одобрен и попадет в reviewer-очередь по расписанию."):
+        await callback.answer()
 
 
 @router.message(Command("dispatch_now"))
@@ -226,20 +233,14 @@ async def dispatch_now_command(message: Message, session_factory: async_sessionm
     await message.answer("Черновик будет отправлен reviewer-у в ближайший scheduler tick." if ok else "Одобренный черновик не найден.")
 
 
-@router.callback_query(F.data.startswith("post:skip:"))
-async def skip_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession]) -> None:
-    post_id = int(callback.data.split(":")[-1])
-    async with session_factory() as session:
-        result = await skip_post_once(session, post_id)
-    await callback.message.edit_text(transition_message(result, "Пост пропущен."))
-    await callback.answer()
-
-
 @router.callback_query(F.data.startswith("post:edit:"))
 async def edit_help_callback(callback: CallbackQuery) -> None:
     post_id = int(callback.data.split(":")[-1])
+    message = await callback_message_or_alert(callback)
+    if not message:
+        return
     await callback.answer()
-    await callback.message.answer(f"Используй: /edit_draft {post_id} новый текст")
+    await message.answer(f"Используй: /edit_draft {post_id} новый текст")
 
 
 @router.message(Command("edit_draft"))
@@ -277,48 +278,3 @@ async def edit_draft_command(message: Message, session_factory: async_sessionmak
             await message.answer("Черновик обновлен в системе, но исходную reviewer-карточку обновить не удалось. Проверь /draft <post_id>.")
         return
     await message.answer("Черновик обновлен.")
-
-
-async def send_review_queue(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
-    async with session_factory() as session:
-        posts = await queries.list_review_queue(session, 20)
-    if not posts:
-        await message.answer("Reviewer-очередь пуста.")
-        return
-    for post in posts:
-        draft = post.draft
-        text = (
-            f"На обработке #{post.id}\n"
-            f"Ссылка: {escape(post.post_url or '-')}\n\n"
-            f"Черновик:\n<code>{cut(draft.draft_text if draft else '', 900)}</code>"
-        )
-        await message.answer(text, reply_markup=reviewer_actions(post.id, post.post_url), disable_web_page_preview=True)
-
-
-@router.message(Command("review_queue"))
-async def review_queue_command(message: Message, session_factory: async_sessionmaker[AsyncSession]) -> None:
-    await send_review_queue(message, session_factory)
-
-
-@router.callback_query(F.data == "nav:review_queue")
-async def review_queue_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession]) -> None:
-    await callback.answer()
-    await send_review_queue(callback.message, session_factory)
-
-
-@router.callback_query(F.data.startswith("review:done:"))
-async def reviewer_done_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession]) -> None:
-    post_id = int(callback.data.split(":")[-1])
-    async with session_factory() as session:
-        result = await mark_reviewer_done_once(session, post_id)
-    await callback.message.edit_text(transition_message(result, "Отмечено как обработанное."))
-    await callback.answer()
-
-
-@router.callback_query(F.data.startswith("review:skip:"))
-async def reviewer_skip_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession]) -> None:
-    post_id = int(callback.data.split(":")[-1])
-    async with session_factory() as session:
-        result = await skip_post_once(session, post_id)
-    await callback.message.edit_text(transition_message(result, "Пост пропущен."))
-    await callback.answer()

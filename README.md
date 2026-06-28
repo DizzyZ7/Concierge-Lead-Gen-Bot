@@ -38,7 +38,7 @@ Key capabilities:
 - PostgreSQL 16
 - SQLAlchemy async + Alembic
 - APScheduler
-- Docker Compose
+- Docker Compose for local development; BotHost production runs `python main.py` directly
 
 ## Safety model
 
@@ -85,6 +85,28 @@ Never commit `.env` or files in `sessions/`.
 ## Deploy and migration gate
 
 The application requires Alembic revision `0010_reviewer_claims`. The bot checks this before polling; a stale database schema prevents startup instead of causing hidden runtime errors.
+
+### BotHost production
+
+BotHost runs the Python process directly, not Docker Compose. Use this startup command:
+
+```bash
+python main.py
+```
+
+Set `DATABASE_URL` to an external PostgreSQL host reachable from BotHost. Do not use `localhost` or `db:5432` there; those only work for local/container deployments. On startup, `main.py`:
+
+- loads `.env` and trims accidental spaces/quotes in critical variables;
+- retries the DB connection before failing;
+- runs `alembic upgrade head` programmatically when the schema is stale;
+- calls `delete_webhook(drop_pending_updates=True)` before polling;
+- logs bot username, DB revision, parser state and reviewer-chat reachability.
+
+Within two minutes of deploy, logs should contain `database_connection_ok`, `telegram_webhook_deleted` and `startup_self_check`. Then send `/start` and `/health` in Telegram.
+
+If `REVIEWER_CHAT_IDS` contains a group/supergroup ID, add the bot to that chat manually and allow it to send messages. The startup check logs `reviewer_chat_unreachable` when this is missing.
+
+### Docker/local deployment
 
 Recommended first deployment:
 
@@ -312,7 +334,7 @@ smoke check
 
 ```text
 bot/        Telegram handlers, filters and middleware
-a core/      Configuration and logging
+core/      Configuration and logging
 db/         Models, migrations and queries
 services/   Parser, AI, reviewer flow and operations
 scripts/    Seeds and smoke checks

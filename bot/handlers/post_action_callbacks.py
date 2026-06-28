@@ -4,6 +4,7 @@ from aiogram import F, Router
 from aiogram.types import CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from bot.ui import edit_callback_message_or_alert
 from core.logger import get_logger
 from db import queries
 from services.post_audit import actor_from_user, record_post_action
@@ -60,8 +61,8 @@ async def process_skip(callback: CallbackQuery, session_factory: async_sessionma
                 new_status="skipped",
                 callback=callback,
             )
-    await callback.message.edit_text(feedback(result, "Пост пропущен."))
-    await callback.answer()
+    if await edit_callback_message_or_alert(callback, feedback(result, "Пост пропущен.")):
+        await callback.answer()
 
 
 @router.callback_query(F.data.startswith("post:skip:"))
@@ -90,5 +91,5 @@ async def reviewer_done_callback(callback: CallbackQuery, session_factory: async
                 new_status="reviewer_done",
                 callback=callback,
             )
-    await callback.message.edit_text(feedback(result, "Отмечено как обработанное."))
-    await callback.answer()
+    if await edit_callback_message_or_alert(callback, feedback(result, "Отмечено как обработанное.")):
+        await callback.answer()

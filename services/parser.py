@@ -139,6 +139,7 @@ class ParserService:
         limit = max(daily_draft_limit, 0)
         highest_seen_id = last_seen_message_id or 0
         try:
+            log.info(f"Scanning channel {username}", channel=username)
             entity = await self.client.get_entity(username)
             async for message in iter_unseen_messages(
                 self.client,
@@ -168,6 +169,7 @@ class ParserService:
                     score = await self.ai_service.score_post(text, geo, session)
                     value = float(score.get("score", 0.5))
                     intent = str(score.get("intent", "unknown")).lower()
+                    log.info(f"Post {username}/{message_id} scored {value}", channel=username, message_id=message_id, score=value)
                     if allowed and intent not in allowed:
                         log.info("intent_filtered_post_skipped", channel=username, message_id=message_id, intent=intent)
                         continue

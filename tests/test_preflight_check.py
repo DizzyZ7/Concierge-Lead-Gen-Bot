@@ -27,6 +27,18 @@ class PreflightCheckTests(unittest.TestCase):
     def test_safe_reviewer_first_config_has_no_blockers(self) -> None:
         self.assertEqual(config_blockers(self.settings()), [])
 
+    def test_settings_strip_quotes_and_keep_integer_ids(self) -> None:
+        settings = self.settings(
+            BOT_TOKEN=' "123:token" ',
+            ADMIN_IDS=' "1,2" ',
+            REVIEWER_CHAT_IDS=" '-100123,3' ",
+            DATABASE_URL=' "postgresql://user:pass@example.com/db" ',
+        )
+        self.assertEqual(settings.bot_token, "123:token")
+        self.assertEqual(settings.admin_ids, {1, 2})
+        self.assertEqual(settings.reviewer_chat_ids, {-100123, 3})
+        self.assertEqual(settings.database_url, "postgresql://user:pass@example.com/db")
+
     def test_unsafe_launch_flags_are_blocked(self) -> None:
         blockers = config_blockers(
             self.settings(

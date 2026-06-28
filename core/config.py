@@ -38,6 +38,13 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = Field(None, alias="ANTHROPIC_API_KEY")
     anthropic_model: str = Field("claude-3-5-haiku-20241022", alias="ANTHROPIC_MODEL")
 
+    @field_validator("bot_token", "database_url", "admin_ids_raw", "reviewer_chat_ids_raw", mode="before")
+    @classmethod
+    def strip_required_strings(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return value.strip().strip('"').strip("'").strip()
+        return value
+
     @field_validator("tg_api_id", "tg_api_hash", "tg_phone", "anthropic_api_key", mode="before")
     @classmethod
     def empty_optional_to_none(cls, value: Any) -> Any:

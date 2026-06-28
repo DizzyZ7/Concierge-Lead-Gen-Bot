@@ -3,8 +3,11 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.logger import get_logger
 from db import queries
 from db.models import ParsedPost
+
+log = get_logger(__name__)
 
 
 async def mark_processing_failed(
@@ -19,8 +22,8 @@ async def mark_processing_failed(
 ) -> None:
     try:
         await session.rollback()
-    except Exception:
-        pass
+    except Exception as rollback_error:
+        log.warning("processing_failed_rollback_failed", error=str(rollback_error))
 
     reason = f"Ошибка обработки: {error.__class__.__name__}"[:400]
     existing = await session.scalar(

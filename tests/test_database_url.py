@@ -18,6 +18,12 @@ class DatabaseUrlTests(unittest.TestCase):
             "postgresql+asyncpg://user:pass@example.com:5432/app",
         )
 
+    def test_url_whitespace_and_quotes_are_removed(self) -> None:
+        self.assertEqual(
+            normalize_database_url(' "postgresql://user:pass@example.com:5432/app" '),
+            "postgresql+asyncpg://user:pass@example.com:5432/app",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
