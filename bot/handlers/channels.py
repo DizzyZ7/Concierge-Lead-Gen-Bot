@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.keyboards.inline import channel_actions, channels_menu
-from bot.ui import edit_callback_message
+from bot.ui import callback_int_suffix_or_alert, edit_callback_message
 from db import queries
 from db.models import TargetChannel
 from services.ai import VALID_INTENTS
@@ -108,7 +108,9 @@ async def channels_callback(callback: CallbackQuery, session_factory: async_sess
 @router.callback_query(F.data.startswith("channel:view:"))
 async def channel_detail_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession]) -> None:
     await callback.answer()
-    channel_id = int(callback.data.split(":")[-1])
+    channel_id = await callback_int_suffix_or_alert(callback)
+    if channel_id is None:
+        return
     async with session_factory() as session:
         channel = await session.get(TargetChannel, channel_id)
     if not channel:
@@ -246,7 +248,9 @@ async def reset_channel_cursor_command(message: Message, session_factory: async_
 
 @router.callback_query(F.data.startswith("channel:toggle:"))
 async def toggle_channel_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession]) -> None:
-    channel_id = int(callback.data.split(":")[-1])
+    channel_id = await callback_int_suffix_or_alert(callback)
+    if channel_id is None:
+        return
     async with session_factory() as session:
         channel = await queries.toggle_channel(session, channel_id)
     await callback.answer("Мониторинг обновлен" if channel else "Канал не найден")

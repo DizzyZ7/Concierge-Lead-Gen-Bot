@@ -12,7 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from bot.keyboards.inline import approved_actions, reviewer_actions
 from bot.presentation import intent_label, status_label
-from bot.ui import callback_message_or_alert, edit_callback_message_or_alert
+from bot.ui import callback_int_suffix_or_alert, callback_message_or_alert, edit_callback_message_or_alert
 from db import queries
 from db.models import ParsedPost, ReviewDraft
 from services.ai import AIService
@@ -166,7 +166,9 @@ async def send_reviewer_backlog(
 
 @router.callback_query(F.data.startswith("post:approve_now:"))
 async def approve_now_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession], ai_service: AIService) -> None:
-    post_id = int(callback.data.split(":")[-1])
+    post_id = await callback_int_suffix_or_alert(callback)
+    if post_id is None:
+        return
     result = await approve_now_flow(post_id, session_factory=session_factory, ai_service=ai_service)
     if result == "updated":
         if await edit_callback_message_or_alert(callback, f"Пост #{post_id} одобрен и будет отправлен reviewer-у в ближайший scheduler tick."):
@@ -180,7 +182,9 @@ async def approve_now_callback(callback: CallbackQuery, session_factory: async_s
 
 @router.callback_query(F.data.startswith("post:dispatch:"))
 async def dispatch_now_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession]) -> None:
-    post_id = int(callback.data.split(":")[-1])
+    post_id = await callback_int_suffix_or_alert(callback)
+    if post_id is None:
+        return
     async with session_factory() as session:
         ok = await queries.dispatch_now(session, post_id)
     await callback.answer("Поставлено на немедленную отправку" if ok else "Одобренный черновик не найден", show_alert=not ok)
@@ -188,7 +192,9 @@ async def dispatch_now_callback(callback: CallbackQuery, session_factory: async_
 
 @router.callback_query(F.data.startswith("post:draft:"))
 async def show_draft_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession]) -> None:
-    post_id = int(callback.data.split(":")[-1])
+    post_id = await callback_int_suffix_or_alert(callback)
+    if post_id is None:
+        return
     async with session_factory() as session:
         post = await queries.get_post_with_details(session, post_id)
     if not post:

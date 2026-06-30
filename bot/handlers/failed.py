@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.keyboards.inline import failed_actions
 from bot.presentation import intent_label
-from bot.ui import callback_message_or_alert, edit_callback_message_or_alert
+from bot.ui import callback_int_suffix_or_alert, callback_message_or_alert, edit_callback_message_or_alert
 from core.config import Settings
 from db import queries
 from services.ai import AIService
@@ -61,7 +61,9 @@ async def retry_failed_callback(
     ai_service: AIService,
     settings: Settings,
 ) -> None:
-    post_id = int(callback.data.split(":")[-1])
+    post_id = await callback_int_suffix_or_alert(callback)
+    if post_id is None:
+        return
     try:
         async with session_factory() as session:
             post = await queries.get_post_with_details(session, post_id)

@@ -4,7 +4,7 @@ from aiogram import F, Router
 from aiogram.types import CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from bot.ui import edit_callback_message_or_alert
+from bot.ui import callback_int_suffix_or_alert, edit_callback_message_or_alert
 from core.logger import get_logger
 from db import queries
 from services.post_audit import actor_from_user, record_post_action
@@ -47,7 +47,9 @@ async def audit_status_change(
 
 
 async def process_skip(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession]) -> None:
-    post_id = int(callback.data.split(":")[-1])
+    post_id = await callback_int_suffix_or_alert(callback)
+    if post_id is None:
+        return
     async with session_factory() as session:
         post = await queries.get_post_with_details(session, post_id)
         previous_status = post.status if post else None
@@ -77,7 +79,9 @@ async def reviewer_skip_callback(callback: CallbackQuery, session_factory: async
 
 @router.callback_query(F.data.startswith("review:done:"))
 async def reviewer_done_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession]) -> None:
-    post_id = int(callback.data.split(":")[-1])
+    post_id = await callback_int_suffix_or_alert(callback)
+    if post_id is None:
+        return
     async with session_factory() as session:
         post = await queries.get_post_with_details(session, post_id)
         previous_status = post.status if post else None

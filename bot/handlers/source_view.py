@@ -6,7 +6,7 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.presentation import intent_label, status_label
-from bot.ui import callback_message_or_alert
+from bot.ui import callback_int_suffix_or_alert, callback_message_or_alert
 from db import queries
 from services.reviewer_cards import escape_and_trim
 
@@ -45,7 +45,9 @@ async def source_command(message: Message, session_factory: async_sessionmaker[A
 
 @router.callback_query(F.data.startswith("post:source:"))
 async def source_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession]) -> None:
-    post_id = int(callback.data.split(":")[-1])
+    post_id = await callback_int_suffix_or_alert(callback)
+    if post_id is None:
+        return
     async with session_factory() as session:
         post = await queries.get_post_with_details(session, post_id)
     if not post:

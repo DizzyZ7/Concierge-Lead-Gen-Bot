@@ -21,6 +21,20 @@ class CallbackSafetyTests(unittest.TestCase):
                     offenders.append(f"{path}:{marker}")
         self.assertEqual(offenders, [])
 
+    def test_handlers_do_not_parse_callback_ids_without_guard(self) -> None:
+        handlers_dir = Path("bot/handlers")
+        forbidden = (
+            "int(callback.data.split",
+            "int(callback.data.rsplit",
+        )
+        offenders: list[str] = []
+        for path in handlers_dir.glob("*.py"):
+            text = path.read_text(encoding="utf-8")
+            for marker in forbidden:
+                if marker in text:
+                    offenders.append(f"{path}:{marker}")
+        self.assertEqual(offenders, [])
+
 
 if __name__ == "__main__":
     unittest.main()

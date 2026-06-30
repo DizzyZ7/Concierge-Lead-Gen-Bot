@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.keyboards.inline import pending_actions, reviewer_actions
 from bot.presentation import intent_label
-from bot.ui import callback_message_or_alert, edit_callback_message_or_alert
+from bot.ui import callback_int_suffix_or_alert, callback_message_or_alert, edit_callback_message_or_alert
 from core.logger import get_logger
 from db import queries
 from services.ai import AIService
@@ -191,7 +191,9 @@ async def add_item_command(message: Message, session_factory: async_sessionmaker
 
 @router.callback_query(F.data.startswith("post:approve:"))
 async def approve_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession], ai_service: AIService) -> None:
-    post_id = int(callback.data.split(":")[-1])
+    post_id = await callback_int_suffix_or_alert(callback)
+    if post_id is None:
+        return
     async with session_factory() as session:
         post = await queries.get_post_with_details(session, post_id)
         if not post or not post.channel:
@@ -235,7 +237,9 @@ async def dispatch_now_command(message: Message, session_factory: async_sessionm
 
 @router.callback_query(F.data.startswith("post:edit:"))
 async def edit_help_callback(callback: CallbackQuery) -> None:
-    post_id = int(callback.data.split(":")[-1])
+    post_id = await callback_int_suffix_or_alert(callback)
+    if post_id is None:
+        return
     message = await callback_message_or_alert(callback)
     if not message:
         return

@@ -69,3 +69,15 @@ async def callback_message_or_alert(
         return callback.message
     await callback.answer(text, show_alert=True)
     return None
+
+
+async def callback_int_suffix_or_alert(
+    callback: CallbackQuery,
+    *,
+    text: str = "Некорректная кнопка. Обнови раздел и попробуй снова.",
+) -> int | None:
+    value = (callback.data or "").rsplit(":", 1)[-1]
+    if not value.isdigit():
+        await callback.answer(text, show_alert=True)
+        return None
+    return int(value)
