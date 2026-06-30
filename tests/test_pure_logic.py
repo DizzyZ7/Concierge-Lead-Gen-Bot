@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from datetime import datetime, timedelta, timezone
 
-from bot.handlers.leads import DEFAULT_FOLLOWUP_HOURS, format_activity
+from bot.handlers.leads import DEFAULT_FOLLOWUP_HOURS, format_activity, parse_optional_tg_user_id, parse_positive_decimal
 from bot.keyboards.inline import main_menu
 from services.parser import current_day_start_utc, has_blocked_keyword, is_stale, split_csv
 from services.post_state import APPROVABLE_STATUSES, FINAL_OUTCOME_STATUSES, can_approve, can_mark_as_lead
@@ -62,6 +62,18 @@ class LeadFollowupTests(unittest.TestCase):
         rendered = format_activity(datetime.now(timezone.utc) - timedelta(hours=3))
         self.assertIn("UTC", rendered)
         self.assertIn("ч. назад", rendered)
+
+    def test_optional_tg_user_id_parser_rejects_bad_values(self) -> None:
+        self.assertIsNone(parse_optional_tg_user_id("0"))
+        self.assertEqual(parse_optional_tg_user_id("123"), 123)
+        with self.assertRaises(ValueError):
+            parse_optional_tg_user_id("@user")
+
+    def test_positive_decimal_parser_rejects_non_finite_values(self) -> None:
+        self.assertEqual(parse_positive_decimal("10,50"), parse_positive_decimal("10.50"))
+        for value in ("0", "-1", "NaN", "Infinity", "abc"):
+            with self.assertRaises(ValueError):
+                parse_positive_decimal(value)
 
 
 class MainMenuTests(unittest.TestCase):

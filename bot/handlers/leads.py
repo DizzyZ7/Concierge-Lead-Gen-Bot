@@ -39,6 +39,24 @@ def format_activity(value: datetime | None) -> str:
     return f"{normalized.strftime('%d.%m %H:%M UTC')} ({age} ч. назад)"
 
 
+def parse_optional_tg_user_id(value: str) -> int | None:
+    if value == "0":
+        return None
+    if value.isdigit():
+        return int(value)
+    raise ValueError("Telegram ID must be numeric or 0")
+
+
+def parse_positive_decimal(value: str) -> Decimal:
+    try:
+        amount = Decimal(value.replace(",", "."))
+    except InvalidOperation as error:
+        raise ValueError("amount must be numeric") from error
+    if not amount.is_finite() or amount <= 0:
+        raise ValueError("amount must be positive and finite")
+    return amount
+
+
 def render_lead(lead: Lead) -> str:
     username = f"@{lead.tg_username}" if lead.tg_username else "-"
     source_post = lead.source_post
@@ -205,7 +223,11 @@ async def add_lead_command(message: Message, session_factory: async_sessionmaker
     if len(parts) < 6:
         await message.answer("Формат: /add_lead <tg_user_id_or_0> <username_or_dash> <geo> <intent> <notes>")
         return
-    user_id = None if parts[1] == "0" else int(parts[1]) if parts[1].isdigit() else None
+    try:
+        user_id = parse_optional_tg_user_id(parts[1])
+    except ValueError:
+        await message.answer("Telegram ID должен быть числом или 0.")
+        return
     username = None if parts[2] == "-" else parts[2].lstrip("@")
     async with session_factory() as session:
         lead = await queries.create_lead(
@@ -267,12 +289,9 @@ async def deal_command(message: Message, session_factory: async_sessionmaker[Asy
         await message.answer("Формат: /deal <lead_id> <commission_amount>")
         return
     try:
-        revenue = Decimal(parts[2].replace(",", "."))
-    except InvalidOperation:
+        revenue = parse_positive_decimal(parts[2])
+    except ValueError:
         await message.answer("Доход / комиссия должны быть числом.")
-        return
-    if revenue <= 0:
-        await message.answer("Доход / комиссия должны быть больше нуля.")
         return
     async with session_factory() as session:
         result = await record_deal_revenue(session, lead_id=int(parts[1]), revenue=revenue)
