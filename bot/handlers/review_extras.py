@@ -12,6 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from bot.keyboards.inline import approved_actions, reviewer_actions
 from bot.presentation import intent_label, status_label
+from bot.ui import callback_message_or_alert, edit_callback_message_or_alert
 from db import queries
 from db.models import ParsedPost, ReviewDraft
 from services.ai import AIService
@@ -168,8 +169,8 @@ async def approve_now_callback(callback: CallbackQuery, session_factory: async_s
     post_id = int(callback.data.split(":")[-1])
     result = await approve_now_flow(post_id, session_factory=session_factory, ai_service=ai_service)
     if result == "updated":
-        await callback.message.edit_text(f"Пост #{post_id} одобрен и будет отправлен reviewer-у в ближайший scheduler tick.")
-        await callback.answer()
+        if await edit_callback_message_or_alert(callback, f"Пост #{post_id} одобрен и будет отправлен reviewer-у в ближайший scheduler tick."):
+            await callback.answer()
         return
     if result == "blocked":
         await callback.answer("Этот пост уже был одобрен или закрыт", show_alert=True)
@@ -193,8 +194,11 @@ async def show_draft_callback(callback: CallbackQuery, session_factory: async_se
     if not post:
         await callback.answer("Пост не найден", show_alert=True)
         return
+    message = await callback_message_or_alert(callback)
+    if not message:
+        return
     await callback.answer()
-    await callback.message.answer(render_draft_card(post))
+    await message.answer(render_draft_card(post))
 
 
 @router.message(Command("draft"))
@@ -227,5 +231,8 @@ async def reviewer_backlog_command(message: Message, session_factory: async_sess
 
 @router.callback_query(F.data == "nav:approved_queue")
 async def approved_queue_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    message = await callback_message_or_alert(callback)
+    if not message:
+        return
     await callback.answer()
-    await send_approved_queue(callback.message, session_factory)
+    await send_approved_queue(message, session_factory)

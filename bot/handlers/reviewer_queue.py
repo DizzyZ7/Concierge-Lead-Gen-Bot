@@ -6,6 +6,7 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.keyboards.inline import reviewer_actions
+from bot.ui import callback_message_or_alert
 from services.reviewer_cards import escape_and_trim
 from services.reviewer_claims import claim_status_line
 from db import queries
@@ -46,5 +47,8 @@ async def review_queue_command(message: Message, session_factory: async_sessionm
 
 @router.callback_query(F.data == "nav:review_queue")
 async def review_queue_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    message = await callback_message_or_alert(callback)
+    if not message:
+        return
     await callback.answer()
-    await send_reviewer_queue(callback.message, session_factory)
+    await send_reviewer_queue(message, session_factory)

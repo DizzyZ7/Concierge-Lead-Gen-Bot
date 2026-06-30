@@ -7,6 +7,7 @@ from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from bot.ui import callback_message_or_alert
 from db import queries
 
 router = Router(name=__name__)
@@ -36,8 +37,11 @@ async def templates_command(message: Message, session_factory: async_sessionmake
 
 @router.callback_query(F.data == "nav:templates")
 async def templates_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    message = await callback_message_or_alert(callback)
+    if not message:
+        return
     await callback.answer()
-    await send_templates(callback.message, session_factory)
+    await send_templates(message, session_factory)
 
 
 @router.message(Command("add_template"))

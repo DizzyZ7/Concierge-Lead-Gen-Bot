@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.keyboards.inline import saved_actions
 from bot.presentation import intent_label
+from bot.ui import callback_message_or_alert
 from core.logger import get_logger
 from db import queries
 from db.models import Lead
@@ -187,5 +188,8 @@ async def content_ideas_command(message: Message, session_factory: async_session
 
 @router.callback_query(F.data == "nav:content_ideas")
 async def content_ideas_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    message = await callback_message_or_alert(callback)
+    if not message:
+        return
     await callback.answer()
-    await send_content_ideas(callback.message, session_factory)
+    await send_content_ideas(message, session_factory)

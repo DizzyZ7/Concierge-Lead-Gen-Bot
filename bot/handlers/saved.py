@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.keyboards.inline import saved_actions
 from bot.presentation import intent_label
+from bot.ui import callback_message_or_alert
 from core.logger import get_logger
 from db import queries
 from services.post_audit import actor_from_user, record_post_action
@@ -79,5 +80,8 @@ async def saved_queue_command(message: Message, session_factory: async_sessionma
 
 @router.callback_query(F.data == "nav:saved_queue")
 async def saved_queue_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    message = await callback_message_or_alert(callback)
+    if not message:
+        return
     await callback.answer()
-    await send_saved_queue(callback.message, session_factory)
+    await send_saved_queue(message, session_factory)

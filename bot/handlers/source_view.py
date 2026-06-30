@@ -6,6 +6,7 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.presentation import intent_label, status_label
+from bot.ui import callback_message_or_alert
 from db import queries
 from services.reviewer_cards import escape_and_trim
 
@@ -50,5 +51,8 @@ async def source_callback(callback: CallbackQuery, session_factory: async_sessio
     if not post:
         await callback.answer("Пост не найден", show_alert=True)
         return
+    message = await callback_message_or_alert(callback)
+    if not message:
+        return
     await callback.answer()
-    await callback.message.answer(render_source(post), disable_web_page_preview=True)
+    await message.answer(render_source(post), disable_web_page_preview=True)

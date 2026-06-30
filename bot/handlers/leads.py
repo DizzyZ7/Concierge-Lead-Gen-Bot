@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
 from bot.presentation import intent_label, status_label
+from bot.ui import callback_message_or_alert
 from db import queries
 from db.models import Lead
 from services.deals import record_deal_revenue
@@ -189,8 +190,11 @@ async def followups_command(message: Message, session_factory: async_sessionmake
 
 @router.callback_query(F.data == "nav:leads")
 async def leads_callback(callback: CallbackQuery, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    message = await callback_message_or_alert(callback)
+    if not message:
+        return
     await callback.answer()
-    await send_leads(callback.message, session_factory, "new")
+    await send_leads(message, session_factory, "new")
 
 
 @router.message(Command("add_lead"))
