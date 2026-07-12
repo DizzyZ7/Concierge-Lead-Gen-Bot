@@ -38,8 +38,15 @@ def protected_post_id(event: TelegramObject) -> int | None:
     return None
 
 
+async def deny(event: TelegramObject, message: str) -> None:
+    if isinstance(event, CallbackQuery):
+        await event.answer(message, show_alert=True)
+    elif isinstance(event, Message):
+        await event.answer(message)
+
+
 class ReviewerClaimGuardMiddleware(BaseMiddleware):
-    """Prevent reviewers from changing an actively claimed card owned by someone else."""
+    """Require ownership before changing a live reviewer card."""
 
     async def __call__(
         self,
@@ -66,14 +73,17 @@ class ReviewerClaimGuardMiddleware(BaseMiddleware):
                 )
         except Exception as error:
             log.warning("reviewer_claim_guard_check_failed", post_id=post_id, error=str(error))
-            return await handler(event, data)
+            await deny(event, "Не удалось проверить захват карточки. Действие отменено, попробуй еще раз.")
+            return None
 
+        if access.code == "claim_required":
+            await deny(event, "Сначала нажми «Взять в работу» на reviewer-карточке.")
+            return None
+        if access.code == "claim_unavailable":
+            await deny(event, "Карточка временно недоступна для действий. Обратись к администратору.")
+            return None
         if access.code == "taken":
-            message = f"Карточка уже в работе у {claim_owner_label(access.claim)}."
-            if isinstance(event, CallbackQuery):
-                await event.answer(message, show_alert=True)
-            elif isinstance(event, Message):
-                await event.answer(message)
+            await deny(event, f"Карточка уже в работе у {claim_owner_label(access.claim)}.")
             return None
 
         result = await handler(event, data)
