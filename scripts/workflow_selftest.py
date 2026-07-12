@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 from secrets import token_hex
 
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
-from core.config import get_settings
 from db import queries
 from db.migration_guard import ensure_schema_current
 from db.models import Base, Lead, ParsedPost, PostAction, ReviewDraft, TargetChannel
@@ -26,7 +26,14 @@ def require(condition: bool, message: str) -> None:
         raise WorkflowSelfTestError(message)
 
 
-async def create_isolated_engine(database_url: str, schema_name: str) -> AsyncEngine:
+def database_url_from_env() -> str:
+    database_url = (os.getenv("DATABASE_URL") or "").strip()
+    if not database_url:
+        raise WorkflowSelfTestError("DATABASE_URL is required")
+    return database_url
+
+
+def create_isolated_engine(database_url: str, schema_name: str) -> AsyncEngine:
     return create_async_engine(
         normalize_database_url(database_url),
         pool_pre_ping=True,
@@ -38,8 +45,8 @@ async def run_workflow_selftest() -> None:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
 
-    settings = get_settings()
-    admin_engine = create_engine(settings.database_url)
+    database_url = database_url_from_env()
+    admin_engine = create_engine(database_url)
     admin_session_factory = create_session_factory(admin_engine)
     isolated_engine: AsyncEngine | None = None
     schema_name = f"workflow_selftest_{token_hex(6)}"
@@ -51,7 +58,7 @@ async def run_workflow_selftest() -> None:
             await connection.execute(text(f'CREATE SCHEMA "{schema_name}"'))
         schema_created = True
 
-        isolated_engine = await create_isolated_engine(settings.database_url, schema_name)
+        isolated_engine = create_isolated_engine(database_url, schema_name)
         async with isolated_engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
         session_factory = create_session_factory(isolated_engine)
