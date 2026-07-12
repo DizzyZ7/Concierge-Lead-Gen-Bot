@@ -14,11 +14,20 @@ from services.post_audit import ActionActor
 from services.reviewer_claims import claim_reviewer_card, get_claim_access
 
 
+def test_database_url() -> str | None:
+    explicit = os.getenv("TEST_DATABASE_URL")
+    if explicit:
+        return explicit
+    if os.getenv("CI", "").lower() == "true":
+        return os.getenv("DATABASE_URL")
+    return None
+
+
 class ReviewerClaimDatabaseTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
-        database_url = os.getenv("TEST_DATABASE_URL")
+        database_url = test_database_url()
         if not database_url:
-            self.skipTest("TEST_DATABASE_URL is not configured")
+            self.skipTest("TEST_DATABASE_URL is not configured outside CI")
 
         self.engine = create_engine(database_url)
         self.session_factory = create_session_factory(self.engine)
