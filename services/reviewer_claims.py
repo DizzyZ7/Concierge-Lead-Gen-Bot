@@ -3,13 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import ParsedPost, ReviewDraft
 from services.post_audit import ActionActor
 
 REVIEWER_CLAIM_TIMEOUT = timedelta(minutes=45)
+REVIEWER_ACTION_LEASE = timedelta(minutes=5)
 
 
 @dataclass(frozen=True)
@@ -119,6 +120,61 @@ async def get_claim_access(
         draft=draft,
         actor_user_id=actor_user_id,
         is_admin=is_admin,
+    )
+
+
+async def secure_claim_for_action(
+    session: AsyncSession,
+    *,
+    post_id: int,
+    actor_user_id: int | None,
+    is_admin: bool,
+    action_lease: timedelta = REVIEWER_ACTION_LEASE,
+) -> ClaimResult:
+    """Atomically verify ownership and keep the claim alive while an action executes."""
+    post = await session.scalar(select(ParsedPost).where(ParsedPost.id == post_id))
+    if post is None:
+        return ClaimResult("missing")
+    if post.status != "sent_to_reviewer":
+        return ClaimResult("allowed")
+
+    draft = await session.scalar(select(ReviewDraft).where(ReviewDraft.post_id == post_id))
+    if is_admin:
+        return ClaimResult("allowed", snapshot_from_draft(draft))
+    if draft is None:
+        return ClaimResult("claim_unavailable")
+    if actor_user_id is None:
+        return ClaimResult("claim_required", snapshot_from_draft(draft))
+
+    now = utc_now()
+    action_expires_at = now + action_lease
+    result = await session.execute(
+        update(ReviewDraft)
+        .where(
+            ReviewDraft.post_id == post_id,
+            ReviewDraft.claimed_by_user_id == actor_user_id,
+            ReviewDraft.claim_expires_at.is_not(None),
+            ReviewDraft.claim_expires_at > now,
+        )
+        .values(
+            claim_expires_at=func.greatest(
+                ReviewDraft.claim_expires_at,
+                action_expires_at,
+            )
+        )
+    )
+    if result.rowcount:
+        await session.commit()
+        refreshed = await session.scalar(select(ReviewDraft).where(ReviewDraft.post_id == post_id))
+        return ClaimResult("allowed", snapshot_from_draft(refreshed))
+
+    current = await session.scalar(select(ReviewDraft).where(ReviewDraft.post_id == post_id))
+    return evaluate_claim_access(
+        post_status=post.status,
+        draft=current,
+        actor_user_id=actor_user_id,
+        is_admin=False,
+        now=now,
     )
 
 
