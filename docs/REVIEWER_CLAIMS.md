@@ -16,6 +16,8 @@ Reviewer claims prevent two people from closing the same live card at once.
 
 The claim check is fail-closed: if ownership cannot be verified because of a database or runtime error, the requested change is cancelled instead of bypassing the lock.
 
+Before a protected action starts, ownership is revalidated with an atomic database update. A near-expiry owner claim receives a short action lease so another reviewer cannot take the card between the middleware check and the status change.
+
 A claim is automatically cleared when a protected action closes the card with a status other than `sent_to_reviewer`.
 
 ## Audit
