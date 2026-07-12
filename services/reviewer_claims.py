@@ -71,12 +71,36 @@ def claim_owner_label(snapshot: ClaimSnapshot | None) -> str:
 def claim_status_line(draft: ReviewDraft | None, *, now: datetime | None = None) -> str:
     snapshot = snapshot_from_draft(draft)
     if snapshot is None:
-        return "Карточка свободна."
+        return "Карточка свободна. Перед действием возьми ее в работу."
     if not is_active_claim(draft, now=now):
-        return "Предыдущий захват истек. Карточку можно взять в работу."
+        return "Предыдущий захват истек. Перед действием возьми карточку в работу."
     expires_at = snapshot.expires_at
     expires_text = expires_at.astimezone(timezone.utc).strftime("%H:%M UTC") if expires_at else "-"
     return f"В работе: {claim_owner_label(snapshot)} до {expires_text}."
+
+
+def evaluate_claim_access(
+    *,
+    post_status: str | None,
+    draft: ReviewDraft | None,
+    actor_user_id: int | None,
+    is_admin: bool,
+    now: datetime | None = None,
+) -> ClaimResult:
+    """Return whether a human action may change the post under claim rules."""
+    if post_status != "sent_to_reviewer":
+        return ClaimResult("allowed")
+    if is_admin:
+        return ClaimResult("allowed", snapshot_from_draft(draft))
+    if draft is None:
+        return ClaimResult("claim_unavailable")
+
+    snapshot = snapshot_from_draft(draft)
+    if snapshot is None or not is_active_claim(draft, now=now):
+        return ClaimResult("claim_required", snapshot)
+    if snapshot.user_id == actor_user_id:
+        return ClaimResult("allowed", snapshot)
+    return ClaimResult("taken", snapshot)
 
 
 async def get_claim_access(
@@ -86,15 +110,16 @@ async def get_claim_access(
     actor_user_id: int | None,
     is_admin: bool,
 ) -> ClaimResult:
+    post = await session.scalar(select(ParsedPost).where(ParsedPost.id == post_id))
+    if post is None:
+        return ClaimResult("missing")
     draft = await session.scalar(select(ReviewDraft).where(ReviewDraft.post_id == post_id))
-    if draft is None:
-        return ClaimResult("allowed")
-    snapshot = snapshot_from_draft(draft)
-    if snapshot is None or not is_active_claim(draft):
-        return ClaimResult("allowed", snapshot)
-    if is_admin or snapshot.user_id == actor_user_id:
-        return ClaimResult("allowed", snapshot)
-    return ClaimResult("taken", snapshot)
+    return evaluate_claim_access(
+        post_status=post.status,
+        draft=draft,
+        actor_user_id=actor_user_id,
+        is_admin=is_admin,
+    )
 
 
 async def claim_reviewer_card(
@@ -107,10 +132,7 @@ async def claim_reviewer_card(
     if actor.user_id is None:
         return ClaimResult("actor_missing")
 
-    post = await session.scalar(
-        select(ParsedPost)
-        .where(ParsedPost.id == post_id)
-    )
+    post = await session.scalar(select(ParsedPost).where(ParsedPost.id == post_id))
     if post is None:
         return ClaimResult("missing")
     if post.status != "sent_to_reviewer":
