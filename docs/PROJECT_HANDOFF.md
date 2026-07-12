@@ -1,106 +1,73 @@
 # Project Handoff
 
 ## Updated
-- UTC: 2026-06-25 23:23:26 UTC
-- Branch: unknown; this workspace has no `.git` metadata.
-- Current commit: unknown; this workspace has no `.git` metadata.
+- UTC: 2026-07-12 10:40:28 UTC
+- Branch: `main`
+- Current commit before this handoff refresh: `34dbda46afc1ee370883ccfcdaa6693d9e6e4de2`
 
 ## Current state
-Thailand Lead Radar is prepared for reviewer-first startup with managed PostgreSQL support, schema gating, no-polling preflight, source-validation CLI, safer reviewer access checks, and CI launch gates. The provided external PostgreSQL database is migrated to `0010_reviewer_claims` and seeded with starter Thailand channels/templates. Local Python checks pass. Live Telegram session, real bot polling, reviewer delivery, Claude credentials, remote CI, and Docker image build are not fully verified from this workspace.
+Thailand Lead Radar remains prepared for reviewer-first startup with PostgreSQL schema gating, managed database support, no-polling preflight, source validation, role separation, reviewer claims, audit history and CI quality gates. Reviewer claim enforcement is now stricter: a live reviewer card requires an owned active claim before any protected change, claim verification fails closed, and an atomic action lease closes the timeout-boundary race. Live Telegram polling, real reviewer delivery and Claude operation are still not verified in the current environment.
 
 ## Completed
-- Aligned required migration revision with actual Alembic head `0010_reviewer_claims`.
-- Applied migrations to the provided external PostgreSQL database and seeded starter channels/templates.
-- Added plain `postgresql://` normalization to asyncpg URLs for runtime and Alembic.
-- Added managed PostgreSQL Compose path via `compose.external-db.yaml`.
-- Added no-polling startup preflight with strict unsafe-config checks.
-- Added no-polling Telegram source-validation CLI with schema gate before Telegram connect.
-- Added reviewer group safety check requiring explicit positive `REVIEWER_USER_IDS`.
-- Fixed Russian Pattaya inflection matching in fallback geo scoring.
-- Added unit/smoke coverage for URL normalization, preflight blockers, source-validation helpers, and CI gates.
-- Updated README, operations docs, launch runbook, and CI workflow for managed DB and preflight flow.
-- Changed primary navigation callbacks to edit the existing control-panel message instead of sending a new message.
-- Reworked channel navigation into a compact channel overview plus per-channel detail screens with back navigation.
-- Made smoke-check blocker assertions independent from runtime `REVIEWER_USER_IDS`.
+- Made reviewer claim ownership mandatory for protected actions on `sent_to_reviewer` cards.
+- Changed claim middleware from fail-open to fail-closed when ownership cannot be verified.
+- Added an atomic five-minute action lease before protected actions so a near-expiry claim cannot be taken between verification and the status change.
+- Added pure unit coverage for required claims, owner access, other-reviewer blocking and admin override.
+- Added PostgreSQL integration coverage for concurrent claims and action-lease renewal.
+- Updated reviewer claim documentation.
 
 ## Changed files
-- `README.md` - updated required revision and managed PostgreSQL launch flow.
-- `.github/workflows/ci.yml` - added valid test bot token, compose config checks, and no-polling preflight.
-- `.env.example` - added reviewer user IDs and local PostgreSQL variables.
-- `compose.yaml` - made `.env` optional and forwards bot/database env vars explicitly.
-- `compose.external-db.yaml` - added bot-only Compose config for managed PostgreSQL.
-- `db/session.py` - added database URL normalization.
-- `db/migrations/env.py` - applies URL normalization for Alembic.
-- `scripts/preflight_check.py` - added launch preflight and strict config blocker checks.
-- `scripts/validate_channels.py` - added source validation CLI.
-- `scripts/smoke_check.py` - added smoke assertions for DB URL normalization and preflight blockers.
-- `services/ai.py` - added Pattaya stem alias.
-- `tests/test_database_url.py` - added DB URL normalization tests.
-- `tests/test_preflight_check.py` - added preflight blocker tests.
-- `tests/test_validate_channels_script.py` - added validation helper tests.
-- `tests/test_ci_workflow.py` - added CI quality gate tests.
-- `docs/OPERATIONS.md` - documented managed DB, preflight, and strict prerequisites.
-- `docs/LAUNCH_RUNBOOK.md` - documented command order for managed DB launch.
-- `docs/PROJECT_HANDOFF.md` - refreshed project state and verification status without secrets.
-- `bot/ui.py` - added safe edit-or-answer helpers for callback screens.
-- `bot/handlers/dashboard.py` - dashboard callback now edits the current menu message.
-- `bot/handlers/reports.py` - report callbacks now edit the current menu message and preserve reviewer/admin menu visibility.
-- `bot/handlers/channels.py` - channels now render compact overview/detail screens instead of one message per channel.
-- `bot/handlers/settings.py` - settings callback now edits the current menu message.
-- `bot/keyboards/inline.py` - added channel overview/detail navigation buttons.
-- `tests/test_channel_menu.py` - added coverage for compact channel screens and single-message navigation callbacks.
+- `services/reviewer_claims.py` - added mandatory claim decisions and atomic action lease.
+- `bot/middlewares/reviewer_claim_guard.py` - requires and atomically secures ownership before protected actions; errors cancel the action.
+- `tests/test_reviewer_claims.py` - covers claim access rules.
+- `tests/test_reviewer_claims_db.py` - covers PostgreSQL claim concurrency and near-expiry action lease.
+- `docs/REVIEWER_CLAIMS.md` - documents mandatory claims, fail-closed checks and action lease behavior.
+- `docs/PROJECT_HANDOFF.md` - refreshed continuation state.
 
 ## Database and migrations
 - Required Alembic revision: `0010_reviewer_claims`.
 - Current migration head: `0010_reviewer_claims`.
-- Migration applied in environment: yes, against the provided external PostgreSQL database.
-- Command for applying migrations:
+- Migration applied in environment: previously yes against the provided external PostgreSQL database; no migration was added or applied in this session.
+- Commands for applying migrations:
   - Bundled DB: `docker compose run --rm bot alembic upgrade head`
   - Managed DB: `docker compose -f compose.external-db.yaml run --rm bot alembic upgrade head`
 
 ## Tests and verification
-- Ran `.venv\Scripts\python.exe -m alembic upgrade head` against the provided external PostgreSQL database: passed.
-- Ran `.venv\Scripts\python.exe -m alembic current`: `0010_reviewer_claims (head)`.
-- Ran runtime schema guard against the provided external PostgreSQL database: `0010_reviewer_claims`.
-- Ran starter seed scripts against the provided external PostgreSQL database: 8 channels and 4 templates present/added.
-- Ran `.venv\Scripts\python.exe -m compileall -q .`: passed.
-- Ran `.venv\Scripts\python.exe -m unittest discover -s tests -v`: passed, 63 tests.
-- Ran `.venv\Scripts\python.exe -m scripts.smoke_check`: passed.
-- Ran `docker compose config` and `docker compose -f compose.external-db.yaml config`: passed with CI-style env.
-- Ran `.venv\Scripts\python.exe -m scripts.preflight_check` against external DB with safe test env: passed, `Config blockers: 0`.
-- Ran strict preflight with safe test env: correctly failed because live launch blockers remain.
-- Ran secret scan for provided DB URL fragments outside `.venv`/cache: no matches.
-- CI status: GitHub Actions passed for PR #1 head `fd5b5d9`: `CI` run 225 and `Python check` run 312. Current UI navigation changes are locally verified but not yet reflected in a remote CI run until pushed.
+- New unit and PostgreSQL integration tests were committed but were not executed from this session because no local repository runtime or test database was available.
+- The PostgreSQL integration test uses `TEST_DATABASE_URL` explicitly outside CI and only falls back to `DATABASE_URL` when `CI=true`, avoiding accidental execution against a normal runtime database.
+- GitHub combined status returned no status checks for the latest direct-push commit.
+- Commit workflow lookup also returned no runs for the latest direct-push commit.
+- Previous verified baseline remains: migration `0010_reviewer_claims`, compileall, 63 tests, smoke-check, Compose validation and non-strict preflight passed in the prior prepared workspace.
 
 ## Runtime and deployment
 - Deployed: unknown.
-- Docker/server status: Docker daemon is reachable (`29.3.1`); image build is blocked by Docker Hub/base image pull failures (`short read` / `unexpected EOF` for `python:3.12-slim`, also seen for `postgres:16-alpine`).
-- Parser state: not running; safe checks used `PARSER_ENABLED=false`.
-- Reviewer state: preflight wiring verified with test reviewer values; real Telegram delivery not verified.
-- Claude state: not verified; launch check reports fallback mode without configured key.
-- Required environment variables without secret values: `BOT_TOKEN`, `ADMIN_IDS`, `REVIEWER_CHAT_IDS`, `REVIEWER_USER_IDS` for group/supergroup reviewer delivery, `DATABASE_URL`, `TIMEZONE`, `OUTBOUND_ENABLED=false`, `PARSER_ENABLED`, `TG_API_ID`, `TG_API_HASH`, `TG_PHONE`, `TG_SESSION_NAME`, optional `ANTHROPIC_API_KEY`, optional `ANTHROPIC_MODEL`.
+- Docker/server status: not checked in this session.
+- Parser state: not checked; live Telegram user session remains unverified.
+- Reviewer state: code paths hardened; real two-reviewer Telegram interaction not verified.
+- Claude state: not checked; fallback behavior remains required.
+- Required environment variables without secret values: `BOT_TOKEN`, `ADMIN_IDS`, `REVIEWER_CHAT_IDS`, `REVIEWER_USER_IDS` for group/supergroup delivery, `DATABASE_URL`, `TIMEZONE`, `OUTBOUND_ENABLED=false`, `PARSER_ENABLED`, `TG_API_ID`, `TG_API_HASH`, `TG_PHONE`, `TG_SESSION_NAME`, optional `ANTHROPIC_API_KEY`, optional `ANTHROPIC_MODEL`.
 
 ## Known risks and unresolved issues
-- No `.git` metadata is present in the original workspace, so local branch/current commit cannot be verified there; changes were pushed from a temporary clean clone to PR #1.
-- Docker build cannot complete until Docker Hub image downloads are stable or base images are available locally.
-- Real Telegram bot token, admin/reviewer IDs, Telethon API credentials, phone/session, and optional Claude key are still needed in private runtime environment.
-- Seeded Telegram sources still need live validation through `python -m services.session_login` and `python -m scripts.validate_channels`.
-- Strict preflight will remain red until parser credentials/session, source validation, runtime heartbeats, and optional Claude readiness are handled.
-- Keep `OUTBOUND_ENABLED=false` as the baseline launch mode.
+- The new tests still need execution on GitHub Actions or a local PostgreSQL test environment.
+- Live reviewer claims should be verified with two real reviewer users in a private test group.
+- Real Telegram bot token, reviewer IDs, Telethon credentials/session and optional Claude key are still required in the private runtime environment.
+- Seeded Telegram sources still require live validation.
+- Keep `OUTBOUND_ENABLED=false` as the launch baseline.
 
 ## Next recommended task
-Create a private runtime environment with real Telegram bot/reviewer/parser credentials, then run `python -m services.session_login`, `python -m scripts.validate_channels`, and `python -m scripts.preflight_check --strict`. This is the highest-value next step because schema, seeded data, local tests, source-validation CLI, and no-polling startup wiring are verified, but live Telegram readiness is not.
+Run the full test suite against PostgreSQL and then perform a private two-reviewer staging check: claim a card, attempt a conflicting action from the second reviewer, test near-expiry renewal, release the claim and verify `/post_history`. This is the highest-value next step because the claim rules are now production-hardened in code but not yet verified through real Telegram delivery.
 
 ## Do not break
-- No automatic public comments, DMs, chat joins, source posts, or external contact actions.
+- No automatic public comments, DMs, chat joins, source posts or external contact actions.
 - Reviewer-first, human-in-the-loop workflow remains mandatory.
 - One source post must not create duplicate leads.
-- Reviewer group delivery must require explicit positive `REVIEWER_USER_IDS`.
-- Active claims must prevent another reviewer from closing/editing the card.
-- Reviewer claims must support timeout, owner renew/release, admin release, and cleanup after final outcome.
-- Key reviewer actions must be written to `post_actions`.
-- Telegram HTML must be escaped and message length must stay within Telegram limits.
-- AI provider failure must not stop parsing; local fallback and cooldown behavior must keep source processing available.
+- Reviewer group delivery requires explicit positive `REVIEWER_USER_IDS`.
+- A live reviewer card requires an owned active claim before protected edits or outcomes.
+- Claim verification failures must cancel the action, not bypass ownership.
+- Reviewer claims must support timeout, owner renew/release, admin override and cleanup after final outcome.
+- Key reviewer and claim actions must be written to `post_actions`.
+- Telegram HTML must be escaped and message length must remain within Telegram limits.
+- AI provider failure must not stop parsing; fallback and cooldown must remain available.
 - Daily limits and statistics must respect `TIMEZONE`.
 - Migration gate must prevent startup on stale schema.
-- Public usernames and `t.me` links are unverified contact candidates only.
+- Public usernames and `t.me` links remain unverified contact candidates only.
