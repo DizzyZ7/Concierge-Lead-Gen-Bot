@@ -53,6 +53,7 @@ Manual BotHost shell checks, if needed:
 python -m alembic current
 python -m alembic upgrade head
 python -m scripts.smoke_check
+python -m scripts.workflow_selftest
 python -m scripts.preflight_check
 ```
 
@@ -89,13 +90,16 @@ docker compose run --rm bot python -m scripts.validate_channels
 
 ## 3. Smoke check and start
 
-Run the code smoke check before the first start:
+Run code and isolated database workflow checks before the first start:
 
 ```bash
 docker compose run --rm bot python -m scripts.smoke_check
+docker compose run --rm bot python -m scripts.workflow_selftest
 docker compose run --rm bot python -m scripts.preflight_check
 docker compose run --rm bot python -m scripts.preflight_check --strict
 ```
+
+`workflow_selftest` creates a temporary PostgreSQL schema, verifies the real path `post -> draft -> reviewer claim -> claim guard -> lead -> audit`, and drops the schema in `finally`. It does not leave test channels, leads, statistics, or audit rows in the working schema.
 
 Build and start the stack:
 
@@ -119,9 +123,11 @@ The bot container and direct BotHost entrypoint both apply `alembic upgrade head
 ```
 
 5. Open `/pending`, press `Одобрить сейчас`, and confirm the reviewer receives a card.
-6. Press `Стал лидом` and confirm the new item appears in `/leads`.
-7. Check `/daily_report`, `/channel_stats`, and `/queue_stats`.
-8. Test `/failed_queue` only if a controlled failure is available; do not intentionally break production credentials.
+6. On the reviewer card, press `Взять в работу` and confirm the card shows the reviewer owner and expiration time.
+7. Press `Стал лидом` and confirm the new item appears in `/leads`.
+8. Open `/post_history <post_id>` as admin and confirm claim and lead actions are recorded.
+9. Check `/daily_report`, `/channel_stats`, and `/queue_stats`.
+10. Test `/failed_queue` only if a controlled failure is available; do not intentionally break production credentials.
 
 ## 5. First three days
 
@@ -171,7 +177,9 @@ The launch is ready only when all of these are true:
 - `/health` reports a live reviewer heartbeat.
 - Parser heartbeat appears after its first interval when monitoring is enabled.
 - At least one manual item reaches a reviewer card.
+- A reviewer can claim a card, complete a protected action, and the claim prevents a second reviewer from acting.
 - A lead created from a post appears in `/leads` with source context.
+- `/post_history` records the reviewer claim and final outcome.
 - `/failed_queue` is empty.
 - No recurring error alert is arriving to admins.
-- Mikhail confirms that the cards, drafts, and source filters are useful on real channels.
+- The owner confirms that the cards, drafts, and source filters are useful on real channels.
