@@ -24,6 +24,7 @@ Key capabilities:
 - manual reviewer workflow with no external auto-send;
 - source validation, parser health checks and launch readiness checks;
 - reviewer backlog and limit queue;
+- reviewer claim ownership with timeout and conflict protection;
 - leads, notes, follow-ups, deals and actual commission tracking;
 - source quality analytics;
 - immutable audit history for key reviewer actions;
@@ -106,6 +107,15 @@ Within two minutes of deploy, logs should contain `database_connection_ok`, `tel
 
 If `REVIEWER_CHAT_IDS` contains a group/supergroup ID, add the bot to that chat manually and allow it to send messages. The startup check logs `reviewer_chat_unreachable` when this is missing.
 
+Before polling, run:
+
+```bash
+python -m alembic upgrade head
+python -m scripts.smoke_check
+python -m scripts.workflow_selftest
+python -m scripts.preflight_check
+```
+
 ### Docker/local deployment
 
 Recommended first deployment:
@@ -114,6 +124,7 @@ Recommended first deployment:
 docker compose up -d db
 docker compose run --rm bot alembic upgrade head
 docker compose run --rm bot python -m scripts.smoke_check
+docker compose run --rm bot python -m scripts.workflow_selftest
 docker compose run --rm bot python -m scripts.preflight_check
 docker compose up -d --build bot
 docker compose logs -f bot
@@ -128,6 +139,7 @@ For a managed PostgreSQL database, set `DATABASE_URL` to the external database c
 ```bash
 docker compose -f compose.external-db.yaml run --rm bot alembic upgrade head
 docker compose -f compose.external-db.yaml run --rm bot python -m scripts.smoke_check
+docker compose -f compose.external-db.yaml run --rm bot python -m scripts.workflow_selftest
 docker compose -f compose.external-db.yaml run --rm bot python -m scripts.seed_thailand_channels
 docker compose -f compose.external-db.yaml run --rm bot python -m services.session_login
 docker compose -f compose.external-db.yaml run --rm bot python -m scripts.validate_channels
@@ -135,6 +147,8 @@ docker compose -f compose.external-db.yaml run --rm bot python -m scripts.prefli
 docker compose -f compose.external-db.yaml run --rm bot python -m scripts.preflight_check --strict
 docker compose -f compose.external-db.yaml up -d --build
 ```
+
+`workflow_selftest` creates a temporary PostgreSQL schema, verifies the real reviewer-first business path, and removes the schema in `finally`. It does not leave test leads, channels, statistics or audit rows in the working schema.
 
 `DATABASE_URL` may use either `postgresql://...` or `postgresql+asyncpg://...`; the application normalizes plain PostgreSQL URLs to the async driver internally.
 
@@ -219,7 +233,7 @@ Reviewer actions are limited to the working queue:
 /edit_draft <post_id> <new text>
 ```
 
-A reviewer may approve, save, skip, mark as processed, mark a public comment as written, create a lead or mark an item as an idea. Reviewer menus do not expose channel management, system health, CRM management, deals, revenue or operational configuration.
+A reviewer may approve, claim a delivered card, edit its draft, save, skip, mark as processed, mark a public comment as written, create a lead or mark an item as an idea. Reviewer menus do not expose channel management, system health, CRM management, deals, revenue or operational configuration.
 
 ### Administrator
 
@@ -259,10 +273,12 @@ Useful intents include `relocation`, `realty`, `visa`, `tourism`, `investment`, 
 
 1. A source post receives a relevance score and intent.
 2. If it passes the source filters, the bot creates a reviewer draft.
-3. The reviewer checks the source, edits the draft if necessary and acts manually outside the bot.
-4. In the card, the reviewer records the outcome: comment, lead, idea, saved, skipped, irrelevant or done.
-5. Public Telegram handles found inside the source text are shown as **unverified candidates** only. The reviewer must verify ownership before any contact.
-6. “Стал лидом” creates a CRM lead with the source, geo, intent and a note containing any public contact candidates.
+3. After delivery, the reviewer presses `Взять в работу`. Protected actions require an active claim owned by that reviewer.
+4. The reviewer checks the source, edits the draft if necessary and acts manually outside the bot.
+5. In the card, the reviewer records the outcome: comment, lead, idea, saved, skipped, irrelevant or done.
+6. Public Telegram handles found inside the source text are shown as **unverified candidates** only. The reviewer must verify ownership before any contact.
+7. “Стал лидом” creates a CRM lead with the source, geo, intent and a note containing any public contact candidates.
+8. The final outcome clears the claim, and `/post_history` records claim and outcome actions.
 
 ## Queues and operations
 
@@ -301,6 +317,7 @@ Useful intents include `relocation`, `realty`, `visa`, `tourism`, `investment`, 
 
 Key human actions are recorded in the append-only `post_actions` table:
 
+- reviewer claim, renewal and release;
 - lead created;
 - comment marked as written;
 - content idea;
@@ -315,7 +332,7 @@ Inspect the history as an admin:
 /post_history <post_id>
 ```
 
-See `docs/POST_AUDIT.md` and `docs/OPERATIONS.md` for operational details.
+See `docs/POST_AUDIT.md`, `docs/REVIEWER_CLAIMS.md` and `docs/OPERATIONS.md` for operational details.
 
 ## Health and CI
 
@@ -328,15 +345,17 @@ compileall
 alembic upgrade head on clean PostgreSQL
 unittest discovery
 smoke check
+no-polling preflight
+isolated PostgreSQL reviewer workflow self-test
 ```
 
 ## Project structure
 
 ```text
 bot/        Telegram handlers, filters and middleware
-core/      Configuration and logging
+core/       Configuration and logging
 db/         Models, migrations and queries
 services/   Parser, AI, reviewer flow and operations
-scripts/    Seeds and smoke checks
+scripts/    Seeds, smoke, preflight and workflow checks
 docs/       Operations and audit runbooks
 ```
