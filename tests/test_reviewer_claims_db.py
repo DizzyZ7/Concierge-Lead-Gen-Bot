@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import unittest
+from datetime import timedelta
 from uuid import uuid4
 
 from sqlalchemy import select
@@ -11,7 +12,13 @@ from sqlalchemy.exc import SQLAlchemyError
 from db.models import ParsedPost, ReviewDraft, TargetChannel
 from db.session import create_engine, create_session_factory
 from services.post_audit import ActionActor
-from services.reviewer_claims import claim_reviewer_card, get_claim_access
+from services.reviewer_claims import (
+    REVIEWER_ACTION_LEASE,
+    claim_reviewer_card,
+    get_claim_access,
+    secure_claim_for_action,
+    utc_now,
+)
 
 
 def test_database_url() -> str | None:
@@ -125,6 +132,41 @@ class ReviewerClaimDatabaseTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(winner_access.code, "allowed")
         self.assertEqual(loser_access.code, "taken")
+
+    async def test_owner_action_atomically_extends_near_expiry_claim(self) -> None:
+        claimed = await self.claim_as(101)
+        self.assertEqual(claimed.code, "claimed")
+
+        near_expiry = utc_now() + timedelta(seconds=1)
+        async with self.session_factory() as session:
+            draft = await session.scalar(select(ReviewDraft).where(ReviewDraft.post_id == self.post_id))
+            self.assertIsNotNone(draft)
+            draft.claim_expires_at = near_expiry
+            await session.commit()
+
+        action_started_at = utc_now()
+        async with self.session_factory() as session:
+            owner_access = await secure_claim_for_action(
+                session,
+                post_id=self.post_id,
+                actor_user_id=101,
+                is_admin=False,
+            )
+        self.assertEqual(owner_access.code, "allowed")
+        self.assertIsNotNone(owner_access.claim)
+        self.assertGreaterEqual(
+            owner_access.claim.expires_at,
+            action_started_at + REVIEWER_ACTION_LEASE - timedelta(seconds=1),
+        )
+
+        async with self.session_factory() as session:
+            other_access = await secure_claim_for_action(
+                session,
+                post_id=self.post_id,
+                actor_user_id=202,
+                is_admin=False,
+            )
+        self.assertEqual(other_access.code, "taken")
 
 
 if __name__ == "__main__":
