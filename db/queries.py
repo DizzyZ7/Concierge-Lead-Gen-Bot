@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import random
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -10,14 +11,19 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from core.config import get_settings
 from db.models import AppSetting, DailyStat, DraftTemplate, Lead, ParsedPost, ReviewDraft, TargetChannel
 
 
-def business_today() -> date:
-    """Return the current date in the configured business timezone."""
+def business_today(timezone_name: str | None = None) -> date:
+    """Return the current date in the configured business timezone.
+
+    The query layer intentionally depends only on ``TIMEZONE`` instead of the
+    complete bot settings, so database-only checks do not require Telegram
+    credentials.
+    """
+    configured_timezone = (timezone_name or os.getenv("TIMEZONE") or "Asia/Bangkok").strip()
     try:
-        local_zone = ZoneInfo(get_settings().timezone)
+        local_zone = ZoneInfo(configured_timezone)
     except ZoneInfoNotFoundError:
         local_zone = timezone.utc
     return datetime.now(local_zone).date()
