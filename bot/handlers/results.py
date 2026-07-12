@@ -5,8 +5,6 @@ from html import escape
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
-from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.keyboards.inline import saved_actions
@@ -14,10 +12,9 @@ from bot.presentation import intent_label
 from bot.ui import callback_message_or_alert
 from core.logger import get_logger
 from db import queries
-from db.models import Lead
-from services.contact_candidates import contact_candidates_note
+from services.lead_conversion import mark_post_as_lead
 from services.post_audit import actor_from_user, record_post_action
-from services.post_state import apply_result_once, can_mark_as_lead
+from services.post_state import apply_result_once
 
 router = Router(name=__name__)
 log = get_logger(__name__)
@@ -50,48 +47,6 @@ def state_feedback(result: str, success: str) -> str:
     if result == "blocked":
         return "Пост уже закрыт другим результатом."
     return "Пост не найден."
-
-
-def initial_lead_notes(post_id: int, source_text: str | None) -> str:
-    base = f"Лид из Lead Radar, источник #{post_id}. Контактные данные нужно заполнить после прямого ответа."
-    contacts = contact_candidates_note(source_text)
-    return f"{base}\n{contacts}" if contacts else base
-
-
-async def mark_as_lead(session: AsyncSession, post_id: int) -> tuple[str, int | None]:
-    post = await queries.get_post_with_details(session, post_id)
-    if not post:
-        return "missing", None
-
-    existing = await session.scalar(select(Lead).where(Lead.source_post_id == post_id).limit(1))
-    if existing:
-        if post.status != "lead":
-            post.status = "lead"
-            await session.commit()
-            return "updated", existing.id
-        return "already", existing.id
-
-    if not can_mark_as_lead(post.status):
-        return "blocked", None
-
-    lead = Lead(
-        source_post_id=post.id,
-        geo=post.channel.geo if post.channel else None,
-        intent=post.intent,
-        notes=initial_lead_notes(post.id, post.post_text),
-    )
-    session.add(lead)
-    post.status = "lead"
-    try:
-        await session.flush()
-    except IntegrityError:
-        await session.rollback()
-        existing = await session.scalar(select(Lead).where(Lead.source_post_id == post_id).limit(1))
-        return ("already", existing.id) if existing else ("missing", None)
-
-    await queries.increment_stat(session, "leads_received", 1)
-    await session.refresh(lead)
-    return "updated", lead.id
 
 
 async def audit_outcome(
@@ -152,7 +107,7 @@ async def result_callback(callback: CallbackQuery, session_factory: async_sessio
         post = await queries.get_post_with_details(session, post_id)
         previous_status = post.status if post else None
         if result == "lead":
-            state, lead_id = await mark_as_lead(session, post_id)
+            state, lead_id = await mark_post_as_lead(session, post_id)
             if state == "updated":
                 await audit_outcome(
                     session,
