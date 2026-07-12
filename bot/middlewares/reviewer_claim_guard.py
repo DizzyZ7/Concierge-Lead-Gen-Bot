@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from core.config import Settings
 from core.logger import get_logger
 from db import queries
-from services.reviewer_claims import claim_owner_label, clear_reviewer_claim, get_claim_access
+from services.reviewer_claims import claim_owner_label, clear_reviewer_claim, secure_claim_for_action
 
 log = get_logger(__name__)
 
@@ -65,7 +65,7 @@ class ReviewerClaimGuardMiddleware(BaseMiddleware):
         is_admin = actor_id in settings.admin_ids if actor_id is not None else False
         try:
             async with session_factory() as session:
-                access = await get_claim_access(
+                access = await secure_claim_for_action(
                     session,
                     post_id=post_id,
                     actor_user_id=actor_id,
